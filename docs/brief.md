@@ -43,7 +43,32 @@ Inferido, ainda não confirmado:
 
 MicroPython com rp2 PIO se o timing permitir, senão o C SDK. Código simples e bem comentado.
 
-## Perguntas em aberto
-- Barramento de 4 ou 8 bits? RW vai ao GND?
-- Orientação do pino 1 do LCD e a perna do controlador para cada pino do LCD.
+## Descobertas pelas fotos da petervis.com (2026-10-22)
+
+Fotos em `docs/img/petervis/`, do mesmo modelo de placa ("SP103 AMPLIFIER CONTROL BOARD 3", DSP-ISS2, 2007/06/08).
+
+- O trimpot de contraste se chama **VR901** (10k, marcado 103), e não VR301. Fica à esquerda do LCD.
+- O módulo LCD tem uma fileira de 16 pinos no canto superior esquerdo e os pads **A** e **K** do backlight na lateral direita.
+  O trimpot fica perto da ponta esquerda, o que sugere que o pino 1 é o da esquerda (visto de frente). Falta confirmar.
+- Pela foto do lado das soldas, só parte dos 16 pinos tem trilha fina saindo para o controlador, num feixe de umas 6 ou 7 trilhas.
+  Isso combina com o **modo 4 bits** (RS, E, D4–D7, com RW ao GND), mas é só uma hipótese até medir.
+- A placa de entradas ("SP103 IO BOARD ISS1 VER 1.1") tem **dois PT2314** (U52 e U53) e o conector **CON51**
+  com 4 vias: **GND, CL, DA1, DA0**. Ou seja, um SCL comum e um SDA para cada PT2314, porque os dois têm o mesmo
+  endereço fixo. Um cabo branco de 4 fios liga o CON51 à placa frontal.
+- O display mostra, por exemplo, "Volume -26.25 dB" / "CD".
+
+## Medições com o multímetro (2026-10-22)
+
+Respondidas. Veja o mapa completo em `docs/ligacao-analisador.md`:
+- O barramento é de **8 bits**: D0–D7 nas pernas 39–32 (P0).
+- O **RW não vai ao GND**: ele está na perna 11 (P3.1). RS na perna 10 (P3.0), E na perna 28 (P2.7).
+- O pino 1 do LCD é a ponta esquerda, vista de frente.
+
+## Capturas com o analisador (2026-10-23)
+
+Concluídas. Os detalhes estão em `docs/descobertas-protocolo.md`:
+- O controlador **lê o busy flag** antes de cada comando e de cada caractere. O Pico final precisa responder a essas leituras.
+- Ele **redesenha as duas linhas inteiras** a cada evento (volume, entrada, menu), posicionando cada caractere (cerca de 8 ms por tela).
+- Os dados ficam presos no último byte no repouso, então cortar só o pino E não deve bastar.
+- Telas: boas-vindas, modelo e versão, volume + entrada/barra, menus do Function (Bass, Treble, Balance, Loudness, Speakers).
 - O controlador manda os comandos do PT2314 no mesmo barramento I2C da 24C01?

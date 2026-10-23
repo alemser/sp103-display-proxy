@@ -1,0 +1,13 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# Arquivos locais gerados pelo programa LogicAnalyzer
+tools/logicanalyzer/app/PythonInitLog.txt
+tools/logicanalyzer/app/cpSettingsSerial.json
+
+# Fotos da petervis.com: têm direitos autorais, ficam só na cópia local
+docs/img/petervis/
