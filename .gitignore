@@ -11,3 +11,9 @@ tools/logicanalyzer/app/cpSettingsSerial.json
 
 # Fotos da petervis.com: têm direitos autorais, ficam só na cópia local
 docs/img/petervis/
+
+# Ambiente Python local (mpremote)
+.venv/
+
+# Nome e senha do Wi-Fi: só no computador e no Pico, nunca no GitHub
+firmware/secrets.py

@@ -41,6 +41,8 @@ Inferido, ainda não confirmado:
 3. Camada de reescrita ("PHONO" → "Turntable") que renderiza no LCD reserva.
 4. Depois: um endpoint Wi-Fi para o OceanO mandar o "now playing" (overlay temporário).
 
+A seção "Arquitetura decidida" (no fim) atualiza esta lista.
+
 MicroPython com rp2 PIO se o timing permitir, senão o C SDK. Código simples e bem comentado.
 
 ## Descobertas pelas fotos da petervis.com (2026-10-22)
@@ -72,3 +74,80 @@ Concluídas. Os detalhes estão em `docs/descobertas-protocolo.md`:
 - Os dados ficam presos no último byte no repouso, então cortar só o pino E não deve bastar.
 - Telas: boas-vindas, modelo e versão, volume + entrada/barra, menus do Function (Bass, Treble, Balance, Loudness, Speakers).
 - O controlador manda os comandos do PT2314 no mesmo barramento I2C da 24C01?
+
+## Arquitetura decidida (2026-10-23)
+
+O Pico **não** substitui o controlador e **não** emite IR. O controle do amp por IR já existe no projeto
+**groove-rig** (Broadlink, API na porta 7075, no Orange Pi "oceano").
+
+O papel do Pico:
+1. **Observar** tudo o que o controlador escreve no LCD.
+2. **Guardar o estado do amp na memória**, atualizado a cada mudança.
+3. **Oferecer esse estado pela rede** a quem quiser: groove-rig, app, página web.
+4. Reescrever ou desenhar as telas no LCD (o objetivo original).
+
+### Estado
+
+```json
+{
+  "power": "on",
+  "volume_db": -28.75,
+  "input": "PHONO",
+  "bass_db": 2,
+  "treble_db": 0,
+  "balance": { "side": "R", "db": -5.0 },
+  "loudness": false,
+  "speakers": true,
+  "screen": "normal",
+  "lcd": ["Volume -28.75 dB", "PHONO           "],
+  "updated_at": 1234567
+}
+```
+
+- Um **leitor de telas** reconhece cada tela redesenhada e atualiza só os campos que ela mostra.
+  A tela "Bass 2 dB", por exemplo, atualiza só o `bass_db`.
+- O lado do balance (L/R) sai da posição da barra: o número é negativo dos dois lados.
+- Volume e entrada aparecem sempre na tela normal. Bass, treble, balance, loudness e speakers só aparecem quando alguém
+  abre o menu Function. Até lá ficam como "desconhecido" (`null`), ou com o último valor visto, guardado na flash.
+  O controlador guarda esses valores na EEPROM, então o último valor visto costuma continuar valendo depois de desligar.
+- Mais tarde, opcional: ouvir também o I2C do CON51 (os valores reais dos PT2314, mandados todos ao ligar o amp).
+
+### Interface (Wi-Fi)
+
+| Endpoint | Para quê |
+|---|---|
+| `GET /state` | o JSON acima |
+| `GET /events` | Server-Sent Events: um aviso a cada mudança (para o groove-rig fazer ciclo fechado, por exemplo "vá para -30 dB") |
+| `GET /` | página simples para ver o estado no celular |
+
+Wi-Fi em vez de Bluetooth: o OceanO e o groove-rig já estão na rede, e o navegador do celular basta (sem app).
+
+### Em aberto
+
+- **Saber quando o amp desliga.** Ao desligar, o controlador não escreve nada no LCD. As opções são alimentar o Pico separado
+  e medir o 5 V do amp num GPIO (com divisor), ou o groove-rig tratar "Pico não responde" como "amp desligado".
+  Decidir na instalação final.
+
+### Ordem das etapas
+
+| # | Etapa | Precisa do amp? |
+|---|---|---|
+| 1 | Bancada: o Pico desenha no display reserva as telas capturadas, a partir de um estado | não |
+| 2 | Leitor de telas (tela → estado), testado no Mac com as capturas `.lac` | não |
+| 3 | Wi-Fi: `/state`, `/events` e página, com estado de teste | não |
+| 4 | Sniffer real (PIO) no barramento do LCD do amp | sim, só ouvindo |
+| 5 | Integração com o groove-rig | sim |
+| 6 | Instalação final (interceptar o LCD, alimentação, detecção de power) | sim |
+
+### Andamento
+
+- **Etapa 2 feita (2026-10-23):** `firmware/amp_state.py` (leitor de telas, compatível com MicroPython) e
+  `tools/test_amp_state.py` (18 telas escritas à mão + reprodução das capturas `.lac`). Todas as telas boas das
+  capturas viram estado; telas estragadas por fio solto são rejeitadas (`screen: "unknown"`, sem mudar os campos).
+- Abaixo de 5 dB de balance a barra não aparece, então o lado fica `null` até passar de 5 dB.
+- Falta confirmar qual canal a barra indica (barra à direita = canal direito atenuado, ou o som foi para a direita?).
+- **Etapa 1 feita (2026-10-23):** `firmware/lcd1602.py` (driver 4 bits, só escrita), `firmware/sp103_screens.py`
+  (estado → tela, com o CGRAM do amp) e `firmware/demo_telas.py`. Todas as telas e as 8 figuras aparecem certas no
+  1602 azul, com os sinais de 3,3 V do Pico (sem conversor de nível). O VO foi direto ao GND.
+  Mau contato nos fios só enfiados nos furos embaralha o modo 4 bits; o programa reinicia o display antes de cada tela
+  para se recuperar sozinho. Solução definitiva: soldar barra de pinos.
