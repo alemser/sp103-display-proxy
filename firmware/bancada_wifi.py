@@ -19,7 +19,8 @@ from lcd1602 import Lcd1602
 from web import Publisher, connect_wifi, keep_wifi
 
 lcd = Lcd1602()
-state = AmpState(names.load())
+texts = names.load()                    # textos personalizados (names.py)
+state = AmpState(texts["inputs"])
 last_screen = ("", "")
 pub = None
 
@@ -29,7 +30,7 @@ def draw(l1, l2):
     lcd.reset()                         # recupera o display de um mau contato (ver lcd1602.py)
     for code, rows in enumerate(s.CGRAM):
         lcd.define_char(code, rows)
-    lcd.show(*names.rewrite(l1, l2, state.names))
+    lcd.show(*names.rewrite(l1, l2, texts))
 
 
 def show(screen):
@@ -42,11 +43,12 @@ def show(screen):
     draw(*screen)
 
 
-def set_names(table):
+def set_texts(cfg):
     """Chamado pelo PUT /names: valida, guarda na flash e aplica na hora."""
-    table = names.validate(table)
-    names.save(table)
-    if state.set_names(table, time.ticks_ms()):
+    global texts
+    texts = names.validate(cfg)
+    names.save(texts)
+    if state.set_names(texts["inputs"], time.ticks_ms()):
         pub.changed()
     draw(*last_screen)
 
@@ -108,6 +110,8 @@ async def demo():
         await amp.select_input(random.choice(INPUTS))
         await asyncio.sleep(4)
         await amp.function_menu()
+        await asyncio.sleep(4)
+        await amp.power_on()            # repete as telas de inicialização, para ver os textos personalizados
 
 
 async def main():
@@ -115,7 +119,7 @@ async def main():
     ip = connect_wifi(on_attempt=lambda n: lcd.show("Connecting Wi-Fi", "attempt %d" % n))
     print("Wi-Fi ok. Open http://%s/  (or http://sp103.local/)" % ip)
     lcd.show("Wi-Fi ok", ip)
-    pub = Publisher(state, on_names=set_names)
+    pub = Publisher(state, get_names=lambda: texts, set_names=set_texts)
     await pub.serve()
     asyncio.create_task(keep_wifi())
     await asyncio.sleep(3)

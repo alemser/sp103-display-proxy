@@ -3,12 +3,13 @@
     GET /         página para ver o estado no celular (atualiza sozinha)
     GET /state    o estado em JSON
     GET /events   Server-Sent Events: um "data: {json}" a cada mudança
-    GET /names    a tabela de nomes das entradas
-    PUT /names    troca a tabela: {"TUNER": "Rega Planar 2", ...} (nome vazio = original)
+    GET /names    os textos personalizados (nomes das entradas e telas de inicialização)
+    PUT /names    troca os textos: {"inputs": {"TUNER": "Rega Planar 2"}, "boot": [...], "about": [...]}
+                  (texto vazio = original; ver names.py)
 
 Uso (com asyncio):
     wlan = connect_wifi()
-    pub = Publisher(state, on_names=func)   # func(tabela) valida, guarda e aplica; levanta ValueError
+    pub = Publisher(state, get_names=g, set_names=s)   # s(cfg) valida, guarda e aplica; levanta ValueError
     asyncio.create_task(pub.serve())
     ...
     pub.changed()      # chame depois de cada state.update() que devolveu True
@@ -85,7 +86,7 @@ input{font:16px ui-monospace,Menlo,monospace;padding:6px 8px;border-radius:6px;b
 <div class="lcd" id="lcd">                \n                </div>
 <div class="grid" id="g"></div>
 <div class="st" id="st">connecting…</div>
-<h3>Input names</h3>
+<h3>Custom texts</h3>
 <form id="nf"></form>
 <div class="st" id="nst"></div>
 <script>
@@ -103,10 +104,16 @@ const es=new EventSource("/events");
 es.onmessage=e=>show(JSON.parse(e.data));
 es.onerror=()=>document.getElementById("st").textContent="disconnected, retrying…";
 const nf=document.getElementById("nf"),nst=document.getElementById("nst");
-fetch("/names").then(r=>r.json()).then(d=>{
- nf.innerHTML=d.inputs.map(k=>'<label>'+k+'</label><input maxlength="16" name="'+k+'" placeholder="'+k+
- '" value="'+(d.names[k]||"").replace(/"/g,"&quot;")+'">').join("")+'<button>Save</button>'});
-nf.onsubmit=e=>{e.preventDefault();const b={};for(const i of nf.querySelectorAll("input"))b[i.name]=i.value;
+const q=v=>(v||"").replace(/"/g,"&quot;");
+const row=(label,name,ph,v)=>'<label>'+label+'</label><input maxlength="16" name="'+name+'" placeholder="'+
+ q(ph)+'" value="'+q(v)+'">';
+fetch("/names").then(r=>r.json()).then(d=>{const c=d.config;
+ nf.innerHTML='<b>Inputs</b><span></span>'+d.inputs.map(k=>row(k,"i:"+k,k,c.inputs[k])).join("")+
+ '<b>Startup</b><span></span>'+["boot","about"].map(s=>[0,1].map(n=>
+ row(s+" "+(n+1),s+":"+n,d.defaults[s][n],c[s][n])).join("")).join("")+'<button>Save</button>'});
+nf.onsubmit=e=>{e.preventDefault();const b={inputs:{},boot:["",""],about:["",""]};
+ for(const i of nf.querySelectorAll("input")){const [g,k]=i.name.split(":");
+  if(g=="i")b.inputs[k]=i.value;else b[g][+k]=i.value}
  fetch("/names",{method:"PUT",body:JSON.stringify(b)}).then(r=>r.json()).then(d=>
  nst.textContent=d.error?"Error: "+d.error:"Saved.")};
 </script></body></html>
@@ -114,9 +121,10 @@ nf.onsubmit=e=>{e.preventDefault();const b={};for(const i of nf.querySelectorAll
 
 
 class Publisher:
-    def __init__(self, state, on_names=None, port=80):
+    def __init__(self, state, get_names=None, set_names=None, port=80):
         self.state = state
-        self.on_names = on_names
+        self.get_names = get_names
+        self.set_names = set_names
         self.port = port
         self.listeners = []             # conexões abertas em /events
 
@@ -172,13 +180,15 @@ class Publisher:
     async def _names(self, writer, method, body):
         import names
         status, reply = "200 OK", None
-        if method == "PUT" and self.on_names:
+        if method == "PUT" and self.set_names:
             try:
-                self.on_names(json.loads(body))
-            except ValueError as e:     # JSON inválido ou nome recusado por names.validate
+                self.set_names(json.loads(body))
+            except ValueError as e:     # JSON inválido ou texto recusado por names.validate
                 status, reply = "400 Bad Request", {"error": str(e)}
         if reply is None:
-            reply = {"names": self.state.names, "inputs": names.INPUTS}
+            reply = {"config": self.get_names(), "inputs": names.INPUTS,
+                     "defaults": {"boot": ["ACOUSTIC", "SOLUTIONS"],
+                                  "about": ["Amplifier SP103", "SW version 1.0"]}}
         await self._reply(writer, status, "application/json", json.dumps(reply).encode())
 
     async def _reply(self, writer, status, ctype, body):

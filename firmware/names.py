@@ -1,7 +1,13 @@
-"""Tabela de nomes das entradas: "TUNER" -> "Rega Planar 2".
+"""Textos personalizados do display: nomes das entradas e telas de inicialização.
 
-Fica no arquivo names.json do Pico e é editada pela página web (PUT /names).
-Entrada sem nome na tabela continua com o nome original do amp.
+Ficam no arquivo names.json do Pico e são editados pela página web (PUT /names):
+
+    {"inputs": {"TUNER": "Rega Planar 2", ...},
+     "boot":   ["Welcome", "Alessandro"],     # no lugar de "ACOUSTIC" / "SOLUTIONS"
+     "about":  ["", ""]}                      # no lugar de "Amplifier SP103" / "SW version 1.0"
+
+Texto vazio (ou ausente) = o texto original do amp. As linhas das telas de
+inicialização são centralizadas, como as originais.
 """
 
 import json
@@ -10,6 +16,7 @@ from amp_state import INPUTS
 
 FILE = "names.json"
 MAX_LEN = 16                    # uma linha do LCD
+SCREENS = ("boot", "about")
 
 
 def load():
@@ -17,39 +24,67 @@ def load():
         with open(FILE) as f:
             return validate(json.load(f))
     except (OSError, ValueError):
-        return {}               # sem arquivo (ou arquivo estragado): nomes originais
+        return validate({})     # sem arquivo (ou arquivo estragado): textos originais
 
 
-def save(names):
+def save(cfg):
     with open(FILE, "w") as f:
-        json.dump(names, f)
+        json.dump(cfg, f)
 
 
-def validate(names):
-    """Confere a tabela. Devolve uma cópia limpa, ou levanta ValueError com o motivo."""
-    if not isinstance(names, dict):
-        raise ValueError("the table must be a JSON object")
-    clean = {}
-    for key, value in names.items():
+def _text(value, what):
+    """Confere um texto para o LCD e devolve sem espaços nas pontas."""
+    if not isinstance(value, str):
+        raise ValueError("%s must be text" % what)
+    value = value.strip()
+    if len(value) > MAX_LEN:
+        raise ValueError("'%s' has %d characters; the display fits %d" % (value, len(value), MAX_LEN))
+    for c in value:
+        # O LCD não tem acentos, e no conjunto de caracteres dele "\" vira "¥" e "~" vira seta.
+        if not (" " <= c <= "}") or c == "\\":
+            raise ValueError("'%s': the display has no '%s' character (no accents)" % (value, c))
+    return value
+
+
+def validate(cfg):
+    """Confere a configuração. Devolve uma cópia completa e limpa, ou levanta ValueError."""
+    if not isinstance(cfg, dict):
+        raise ValueError("the configuration must be a JSON object")
+    if cfg and "inputs" not in cfg and not any(k in cfg for k in SCREENS):
+        cfg = {"inputs": cfg}   # formato antigo: só a tabela de entradas
+    inputs = cfg.get("inputs") or {}
+    if not isinstance(inputs, dict):
+        raise ValueError("'inputs' must be a JSON object")
+    clean = {"inputs": {}}
+    for key, value in inputs.items():
         if key not in INPUTS:
             raise ValueError("unknown input: %s (use %s)" % (key, ", ".join(INPUTS)))
-        if not isinstance(value, str):
-            raise ValueError("the name for %s must be text" % key)
-        value = value.strip()
-        if len(value) > MAX_LEN:
-            raise ValueError("'%s' has %d characters; the display fits %d" % (value, len(value), MAX_LEN))
-        for c in value:
-            # O LCD não tem acentos, e no conjunto de caracteres dele "\" vira "¥" e "~" vira seta.
-            if not (" " <= c <= "}") or c == "\\":
-                raise ValueError("'%s': the display has no '%s' character (no accents)"
-                                 % (value, c))
+        value = _text(value, "the name for " + key)
         if value and value != key:
-            clean[key] = value  # vazio ou igual ao original: não precisa guardar
+            clean["inputs"][key] = value
+    for screen in SCREENS:
+        lines = cfg.get(screen) or ["", ""]
+        if not isinstance(lines, list) or len(lines) != 2:
+            raise ValueError("'%s' must be a list with 2 lines" % screen)
+        clean[screen] = [_text(v, screen + " line") for v in lines]
     return clean
 
 
-def rewrite(line1, line2, names):
-    """Troca o nome da entrada na tela normal. As outras telas passam sem mudança."""
-    if line1.startswith("Volume ") and line2.rstrip() in names:
-        line2 = (names[line2.rstrip()] + " " * MAX_LEN)[:MAX_LEN]
-    return line1, line2
+def _center(text):
+    left = (MAX_LEN - len(text)) // 2
+    return (" " * left + text + " " * MAX_LEN)[:MAX_LEN]
+
+
+def rewrite(line1, line2, cfg):
+    """Troca os textos personalizados numa tela completa. As outras telas passam sem mudança."""
+    name = line2.rstrip()
+    if line1.startswith("Volume ") and name in cfg["inputs"]:
+        return line1, (cfg["inputs"][name] + " " * MAX_LEN)[:MAX_LEN]
+    if line1.strip() == "ACOUSTIC" and line2.strip() == "SOLUTIONS":
+        screen = "boot"
+    elif line1.strip() == "Amplifier SP103" and line2.strip().startswith("SW version "):
+        screen = "about"
+    else:
+        return line1, line2
+    new1, new2 = cfg[screen]
+    return (_center(new1) if new1 else line1), (_center(new2) if new2 else line2)

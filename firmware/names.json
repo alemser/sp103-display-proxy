@@ -1,1 +1,3 @@
-{"DAB": "Streaming", "TUNER": "Rega Planar 2", "CD": "Yamaha CD-S303", "TAPE/AUX": "Yamaha KX-393"}
+{"inputs": {"DAB": "Streaming", "TUNER": "Rega Planar 2", "CD": "Yamaha CD-S303", "TAPE/AUX": "Yamaha KX-393"},
+ "boot": ["", ""],
+ "about": ["", ""]}
