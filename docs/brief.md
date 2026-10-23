@@ -151,3 +151,9 @@ Wi-Fi em vez de Bluetooth: o OceanO e o groove-rig já estão na rede, e o naveg
   1602 azul, com os sinais de 3,3 V do Pico (sem conversor de nível). O VO foi direto ao GND.
   Mau contato nos fios só enfiados nos furos embaralha o modo 4 bits; o programa reinicia o display antes de cada tela
   para se recuperar sozinho. Solução definitiva: soldar barra de pinos.
+- **Etapa 3 feita (2026-10-23):** Wi-Fi em segundo plano (sem rede, o display segue normal), `/state`, `/events`,
+  `/names` e página; nomes das entradas e textos de inicialização personalizáveis pela página (`firmware/names.json`
+  no Pico); `main.py` roda tudo sozinho ao ligar.
+- **Interceptação (etapa 6), em análise:** ver `docs/opcoes-intercepcao.md`. Sobrescrever em paralelo é inviável
+  (o controlador segura E e dados com força). O T9311 não tem soquete. A opção menos intrusiva é cortar 11 trilhas no lado
+  das soldas, sem tocar no display. A etapa 4 (só escutar) não precisa de nenhuma intervenção.
