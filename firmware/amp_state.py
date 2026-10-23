@@ -18,11 +18,14 @@ linha pode misturar o valor velho com o novo ("Volume -27.75" no lugar de
 
 BOX = "\x00"                    # caractere personalizado 0: caixa das barras
 INPUTS = ("PHONO", "TUNER", "TAPE/AUX", "CD", "DVD", "DAB")
+# Os mesmos ids que o groove-rig usa para as entradas do SP103.
+INPUT_IDS = {"PHONO": "phono", "TUNER": "tuner", "TAPE/AUX": "tape_aux",
+             "CD": "cd", "DVD": "dvd", "DAB": "dab"}
 VOLUME_MIN = -78.75             # PT2314: 0 a -78,75 dB, passos de 1,25 dB
 STEP = 1.25
 
 # Os campos do estado, na ordem em que aparecem no JSON.
-FIELDS = ("power", "volume_db", "input", "bass_db", "treble_db", "balance",
+FIELDS = ("power", "volume_db", "input", "input_id", "input_name", "bass_db", "treble_db", "balance",
           "loudness", "speakers", "screen", "firmware", "lcd", "updated_at")
 
 
@@ -186,10 +189,13 @@ def lcd_text(line):
 class AmpState:
     """Estado do amplificador, montado a partir das telas que o controlador desenha."""
 
-    def __init__(self):
+    def __init__(self, names=None):
+        self.names = names or {}    # tabela de nomes (names.py): {"TUNER": "Rega Planar 2"}
         self.power = None           # "on" quando alguma tela é reconhecida
         self.volume_db = None
-        self.input = None
+        self.input = None           # nome original no amp: "TUNER"
+        self.input_id = None        # id do groove-rig: "tuner"
+        self.input_name = None      # nome da tabela, ou o original: "Rega Planar 2"
         self.bass_db = None
         self.treble_db = None
         self.balance = None         # {"side": "L"/"R"/None, "db": -5.0}
@@ -219,10 +225,30 @@ class AmpState:
             if getattr(self, key) != values[key]:
                 setattr(self, key, values[key])
                 changed = True
+        if self._names_changed():
+            changed = True
         if changed:
             self.version += 1
             self.updated_at = now_ms
         return changed
+
+    def set_names(self, names, now_ms=None):
+        """Troca a tabela de nomes. Devolve True se o input_name mudou."""
+        self.names = names
+        if self._names_changed():
+            self.version += 1
+            self.updated_at = now_ms
+            return True
+        return False
+
+    def _names_changed(self):
+        if self.input is None:
+            return False
+        iid, name = INPUT_IDS[self.input], self.names.get(self.input, self.input)
+        if (iid, name) == (self.input_id, self.input_name):
+            return False
+        self.input_id, self.input_name = iid, name
+        return True
 
     def to_dict(self):
         d = {}
