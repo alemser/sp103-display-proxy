@@ -16,17 +16,20 @@ import names
 import sp103_screens as s
 from amp_state import AmpState, INPUTS
 from lcd1602 import Lcd1602
-from web import Publisher, connect_wifi, keep_wifi
+from web import Publisher, wifi_task
 
 lcd = Lcd1602()
 texts = names.load()                    # textos personalizados (names.py)
 state = AmpState(texts["inputs"])
 last_screen = ("", "")
 pub = None
+notice_until = None                     # enquanto houver um aviso no display, as telas esperam
 
 
 def draw(l1, l2):
     """Desenha no display a tela do amp, já com os nomes da tabela."""
+    if notice_until is not None:
+        return                          # aviso na tela: notice() redesenha quando acabar
     lcd.reset()                         # recupera o display de um mau contato (ver lcd1602.py)
     for code, rows in enumerate(s.CGRAM):
         lcd.define_char(code, rows)
@@ -114,16 +117,30 @@ async def demo():
         await amp.power_on()            # repete as telas de inicialização, para ver os textos personalizados
 
 
+async def notice(line1, line2, seconds=3):
+    """Mostra um aviso por alguns segundos e depois volta à tela do amp."""
+    global notice_until
+    notice_until = True
+    lcd.reset()
+    lcd.show(line1, line2)
+    await asyncio.sleep(seconds)
+    notice_until = None
+    draw(*last_screen)
+
+
+def wifi_result(ok, info):
+    # Só avisa no display se a primeira tentativa falhar; depois segue tudo normal, sem rede.
+    if not ok:
+        asyncio.create_task(notice("Wi-Fi failed", "offline mode"))
+
+
 async def main():
     global pub
-    ip = connect_wifi(on_attempt=lambda n: lcd.show("Connecting Wi-Fi", "attempt %d" % n))
-    print("Wi-Fi ok. Open http://%s/  (or http://sp103.local/)" % ip)
-    lcd.show("Wi-Fi ok", ip)
     pub = Publisher(state, get_names=lambda: texts, set_names=set_texts)
-    await pub.serve()
-    asyncio.create_task(keep_wifi())
-    await asyncio.sleep(3)
-    await demo()
+    asyncio.create_task(wifi_task(wifi_result))
+    await asyncio.sleep(0.1)            # o Wi-Fi liga antes do servidor abrir o socket
+    await pub.serve()                   # atende assim que houver rede
+    await demo()                        # o display começa na hora, com ou sem Wi-Fi
 
 
 asyncio.run(main())

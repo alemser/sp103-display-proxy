@@ -8,7 +8,7 @@
                   (texto vazio = original; ver names.py)
 
 Uso (com asyncio):
-    wlan = connect_wifi()
+    asyncio.create_task(wifi_task(aviso))   # nunca trava nem levanta erro
     pub = Publisher(state, get_names=g, set_names=s)   # s(cfg) valida, guarda e aplica; levanta ValueError
     asyncio.create_task(pub.serve())
     ...
@@ -25,44 +25,56 @@ import secrets
 HOSTNAME = "sp103"
 
 
-def connect_wifi(attempts=4, timeout_s=15, on_attempt=None):
-    """Conecta na rede de secrets.py, tentando algumas vezes. Devolve o IP, ou levanta erro.
+async def wifi_task(on_first_result=None, quick_tries=3, timeout_s=15, retry_s=30):
+    """Conecta e mantém o Wi-Fi conectado, em segundo plano. Nunca levanta erro:
+    sem Wi-Fi, o resto do programa (o display) segue normal, só sem rede.
 
-    Logo depois de um reset, o chip de Wi-Fi às vezes não conecta na primeira tentativa:
-    por isso desligamos e tentamos de novo antes de desistir.
+    Logo depois de um reset, a primeira tentativa costuma falhar (status -1): o roteador
+    ainda "lembra" a conexão que o reset cortou. Por isso as primeiras tentativas são
+    rápidas (a cada 2 s); depois, uma a cada retry_s.
+
+    on_first_result(ok, info) é chamado uma vez: quando conecta, ou quando as tentativas
+    rápidas acabam sem conectar (info = IP, ou o motivo da falha).
     """
-    network.hostname(HOSTNAME)
-    wlan = network.WLAN(network.STA_IF)
-    wlan.active(True)
-    wlan.config(pm=0xA11140)            # desliga a economia de energia: responde mais rápido
-    for attempt in range(1, attempts + 1):
-        if wlan.isconnected():
-            break
-        if on_attempt:
-            on_attempt(attempt)
-        wlan.disconnect()
-        wlan.connect(secrets.WIFI_SSID, secrets.WIFI_PASSWORD)
-        t0 = time.time()
-        while not wlan.isconnected() and time.time() - t0 < timeout_s:
-            time.sleep(0.5)
-        if not wlan.isconnected():
-            print("Wi-Fi: attempt %d failed (status %d)" % (attempt, wlan.status()))
-    if not wlan.isconnected():
-        raise RuntimeError("Wi-Fi failed (status %d)" % wlan.status())
-    return wlan.ifconfig()[0]
-
-
-async def keep_wifi(every_s=30):
-    """Se o Wi-Fi cair (roteador reiniciou, por exemplo), conecta de novo."""
-    wlan = network.WLAN(network.STA_IF)
+    wlan = None
+    tries = 0
+    reported = False
     while True:
-        await asyncio.sleep(every_s)
-        if not wlan.isconnected():
-            print("Wi-Fi lost, reconnecting")
-            try:
+        result = None
+        try:
+            if wlan is None:
+                network.hostname(HOSTNAME)
+                wlan = network.WLAN(network.STA_IF)
+                wlan.active(True)
+                wlan.config(pm=0xA11140)    # desliga a economia de energia: responde mais rápido
+            if not wlan.isconnected():
+                if tries:
+                    # Só nas tentativas seguintes: com o chip recém-ligado, um disconnect()
+                    # antes do connect() faz a primeira tentativa falhar (status -1).
+                    wlan.disconnect()
+                tries += 1
                 wlan.connect(secrets.WIFI_SSID, secrets.WIFI_PASSWORD)
-            except OSError as e:
-                print("Wi-Fi:", e)
+                t0 = time.time()
+                # status < 0 = falhou de vez (-1 falha, -2 rede não encontrada, -3 senha errada)
+                while not wlan.isconnected() and wlan.status() >= 0 and time.time() - t0 < timeout_s:
+                    await asyncio.sleep(0.25)
+                if wlan.isconnected():
+                    ip = wlan.ifconfig()[0]
+                    print("Wi-Fi ok. Open http://%s/  (or http://%s.local/)" % (ip, HOSTNAME))
+                    result = (True, ip)
+                else:
+                    print("Wi-Fi attempt %d failed (status %d)" % (tries, wlan.status()))
+                    result = (False, "status %d" % wlan.status())
+        except Exception as e:              # chip de Wi-Fi com problema, senha ausente etc.
+            print("Wi-Fi error:", e)
+            result = (False, str(e))
+        if wlan is not None and wlan.isconnected():
+            tries = 0                       # se cair depois, recomeça com tentativas rápidas
+        if result and not reported and (result[0] or tries >= quick_tries):
+            reported = True
+            if on_first_result:
+                on_first_result(*result)
+        await asyncio.sleep(2 if 0 < tries < quick_tries else retry_s)
 
 
 PAGE = """<!doctype html>
