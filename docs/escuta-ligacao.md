@@ -30,6 +30,48 @@ acima da placa do display.
 
 Os pinos 3, 15 e 16 do LCD ficam livres.
 
+### Fios soldados nas pontas dos pinos (guia de solda)
+
+Para uma ligação firme (e para os testes de escrita), solde um fio com Dupont **fêmea** na outra ponta, em cada ponta de
+pino que sobra acima da placa do display. O lado do Pico encaixa na barra de pinos dele.
+
+| Pino do LCD | Sinal | Cor (como montado) | Pico | Pino físico | Para quê |
+|---|---|---|---|---|---|
+| 1 | GND | preto | GND | 3 (qualquer GND serve: 3, 8, 13, 38…) | sempre |
+| 2 | +5 V | vermelho | VSYS | 39 (nunca o 40) | alimentar o Pico pelo amp (solto com o USB ligado) |
+| 4 | RS | amarelo | GP3 | 5 | escuta e testes |
+| 5 | RW | laranja | GP4 | 6 | escuta e **teste 1** |
+| 6 | E | **marrom** | GP2 | 4 | escuta |
+| 7 | D0 | **verde** | GP5 | 7 | escuta |
+| 8 | D1 | branco | GP6 | 9 | escuta |
+| 9 | D2 | cinza | GP7 | 10 | escuta |
+| 10 | D3 | roxo | GP8 | 11 | escuta |
+| 11 | D4 | azul | GP9 | 12 | escuta |
+| 12 | D5 | branco | GP10 | 14 | escuta |
+| 13 | D6 | cinza | GP11 | 15 | escuta |
+| 14 | D7 | roxo | GP12 | 16 | escuta |
+
+Pinos 3, 15 e 16: **não soldar** (contraste e luz de fundo). Os pinos 8 e 13 do Pico são GND, por isso a numeração pula.
+
+**Montado em 2026-10-24** e conferido pelas fotos: sem pontes de solda, display do amp normal. Os fios mais longos fazem
+a borda do E "tremer"; o `sniffer.py` filtra isso (só aceita pulsos do E com 3 µs ou mais). Com o filtro, 1408 palavras
+lidas sem nenhum erro.
+
+Passo a passo:
+1. **Amp fora da tomada.** Pico desligado dos fios.
+2. Corte 13 fios com uns 20 cm. Se as cores repetirem, marque cada fio com fita e o número do pino do LCD.
+3. Desencape ~3 mm, torça e estanhe a ponta do fio.
+4. Ponha um pedaço de **termo-retrátil** no fio antes de soldar.
+5. Encoste o fio estanhado na ponta do pino e aqueça só 2–3 s. Os pinos são vizinhos (2,54 mm): cuidado com
+   pingos de solda entre eles.
+6. Passe o termo-retrátil sobre a solda e aqueça para encolher.
+7. Confira com o multímetro em continuidade (apito):
+   - de cada Dupont até o seu pino do LCD: **apita**;
+   - entre pinos vizinhos (1–2, 4–5, 5–6, …, 13–14): **não apita**.
+8. Prenda o feixe com abraçadeira, para o peso dos fios não puxar as soldas.
+9. Ligue os Dupont no Pico pela tabela. O fio do VSYS (vermelho) fica **solto** sempre que o USB estiver ligado
+   (ver "Regra do USB").
+
 O display reserva da bancada (GP16–21, `bancada-ligacao.md`) pode continuar ligado: ele mostra uma cópia da tela do amp
 **já com os textos personalizados** (prévia da etapa 6). Antes da primeira tela ele mostra "waiting for amp".
 
@@ -73,6 +115,9 @@ para 0**: valor de saída fixo em 0, trocando apenas a direção do pino.
   porque o amp define todos os níveis com força; só o teste no Pico precisou simular o nível 0 puxando o pino.
 
 ## Página do barramento: `http://sp103.local/bus`
+
+Se `sp103.local` demorar ou não abrir (aconteceu em 2026-10-24), use o IP do Pico: `http://192.168.178.108/bus`.
+O IP aparece no roteador ou na mensagem "Wi-Fi ok" do Pico.
 
 Para conferir a escuta no amp e guardar o que o controlador escreveu (programa: `firmware/buslog.py`).
 

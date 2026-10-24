@@ -199,6 +199,26 @@ Os mesmos números negativos (-1,25 → -12,50 dB). Só a **barra** muda de lado
 └────────────────┘
 ```
 
+## Elétrica das portas e leitura do busy flag (2026-10-24)
+
+Medido com o multímetro (amp em standby, iguais com o amp ligado) e com o Pico (`tools/teste_rw_pico.py`).
+
+| Fio | Porta | Repouso | Quando vai a 1 | Medição |
+|---|---|---|---|---|
+| RS | P3.0 | 1 | fraco (pull-up do 8051) | 4,94 V; 0,168 mA para o GND |
+| RW | P3.1 | 0, com força | **fraco**: o Pico o puxou para 0 com só 2 mA | 0,00 V; 0,057 mA |
+| E | P2.7 | 0, com força | não testado (o Pico nunca levanta o E) | 0,03 V; 0,306 mA |
+| D0–D7 | P0 | último byte | só pelos pull-ups de 4,7 kΩ (R907/R908) | ~1 mA ao puxar um 1 para 0 |
+
+- **Para ler o busy flag, o controlador solta só o D7.** Os outros fios continuam presos no último byte escrito. Quando
+  o Pico transformou uma leitura em escrita (puxando o RW), o LCD recebeu 0xD6: o caractere anterior, 'V' (0x56), com o
+  bit 7 ligado. Provavelmente o firmware faz `SETB P0.7` e testa só esse bit.
+- **Busy flag em 1 → ele pergunta de novo.** Com o bit 7 em 1 ("ocupado"), o controlador fez outra leitura e depois
+  seguiu normal: não há limite de tempo nem erro visível.
+- **RW sobe ~21 µs antes do E** nas leituras; os pulsos do E duram 10 µs ou mais.
+- **Ruído no E com fios longos:** com fios de ~20 cm soldados nas pontas dos pinos, a borda do E "treme" (pulsos falsos de
+  até ~1 µs, raros também nas capturas). O sniffer agora só aceita pulsos de 3 µs ou mais.
+
 ## Status
 
 **Fase de captura concluída (2026-10-23).** Todas as telas do controlador estão registradas acima.

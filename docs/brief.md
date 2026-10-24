@@ -167,3 +167,7 @@ Wi-Fi em vez de Bluetooth: o OceanO e o groove-rig já estão na rede, e o naveg
   anterior) e `tools/enviar.py`, ver `docs/atualizacao-wifi.md`. `firmware/buslog.py`: estatísticas do barramento e
   download das últimas 16 384 palavras com horário (`tools/ler_bus.py` remonta as telas). Testado na bancada com um
   amp de mentira (`tools/teste_bus_pico.py`), incluindo as voltas automáticas.
+- **Escrita sem corte, testada (2026-10-24):** o RW e o RS são fracos no 1 (o Pico pode puxá-los com segurança), mas o
+  controlador solta só o D7 para ler o busy flag. O Pico só consegue injetar o último byte com bits zerados, não qualquer
+  comando. Trocar nomes livremente exige cortar as trilhas. Ver `docs/opcoes-intercepcao.md`. Fios soldados nas pontas
+  dos pinos do display; o sniffer ganhou um filtro contra o ruído do E.

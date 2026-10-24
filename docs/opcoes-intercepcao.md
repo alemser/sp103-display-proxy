@@ -61,6 +61,58 @@ porta forte: soltar na hora, só o truque 1 é seguro. Depois, voltar o multíme
 
 A ligação é a mesma da escuta (`escuta-ligacao.md`); muda só o programa.
 
+### Medições do dono (2026-10-24, amp em standby; iguais com o amp ligado)
+
+| Fio | Tensão | Corrente para o GND (escala 2 mA) | Conclusão |
+|---|---|---|---|
+| RS | 4,94 V | 0,168 mA | **fraco no 1** (pull-up fraco do 8051): o Pico pode puxar para 0 |
+| RW | 0,00 V | 0,057 mA | está em 0 no repouso; não diz nada sobre o RW em 1 (só dura ~20 µs, nas leituras) |
+| E | 0,03 V | 0,306 mA | **segurado em 0 com força**: o Pico nunca levanta o E |
+
+O RW fica na mesma porta do RS (P3.1 e P3.0), então provavelmente também é fraco no 1, mas o T9311 não tem folha de
+dados: falta testar. Nas capturas, o RW sobe ~21 µs antes do E (folga para o Pico agir).
+
+### Resultado do teste 1 no amp (2026-10-24)
+
+- **O RW é fraco no 1**: o Pico puxou com 2 mA e o fio desceu. O controlador seguiu normal. Puxar o RW é seguro.
+- **Mas o controlador não solta o barramento inteiro para ler o busy flag**: ele solta só o D7. Os outros fios ficam
+  presos no último byte escrito. O byte injetado foi 0xD6 = o caractere 'V' (0x56) com o bit 7 ligado.
+- Confirmado também: com o bit 7 em 1 ("ocupado"), o controlador pergunta de novo e depois segue normal.
+
+Consequência: o comando injetado é sempre **o último byte com o bit 7 ligado, menos os bits que o Pico zerar**. Não dá
+para injetar qualquer comando. Desviar uma letra só funciona para um endereço que seja um "pedaço" (subconjunto de bits)
+do endereço original (da coluna 6 da linha 2, 0x45, dá para ir a 0x40, 0x05, 0x04, 0x01, 0x00). Montar nomes na área
+escondida, como descrito abaixo, **não é viável**. Para trocar nomes livremente: **cortar as trilhas** (opção 2).
+
+O plano abaixo foi escrito antes do teste e fica como registro.
+
+### O que parecia possível antes do teste (se o RW fosse fraco)
+
+- **Injetar qualquer comando**: na leitura do busy flag, o controlador solta os dados (pull-ups = 0xFF) e põe o RW em 1.
+  O Pico puxa o RW para 0 e zera os bits que quiser: o LCD recebe uma escrita (RS=0) com o byte do Pico. O controlador
+  lê esse mesmo byte como busy flag: com o bit 7 em 1, ele acha que o LCD está ocupado e pergunta de novo (o Pico ganha
+  mais chances, e o controlador espera).
+- **Mudar o lugar de cada caractere**: entre o "Set DDRAM addr" do controlador e o caractere há uma leitura; nela o
+  Pico injeta outro endereço.
+- **Não dá para criar bits**: caracteres (RS=1) só saem das escritas do controlador, com bits zerados. Juntando todas
+  as telas (incluindo as de ligar e os menus), dá para obter os símbolos e números, `A`–`W` e `a`–`v`; faltam
+  `w x y z X Y Z ; = ? [ ] ^ _ { | } ~` e a barra invertida. "Streaming", "Turntable" e "Rega Planar 2" são possíveis;
+  "Spotify" não (falta o `y`).
+- Para trocar um nome, as letras precisariam ser juntadas aos poucos nas colunas escondidas (17 a 40) do LCD e mostradas
+  com o comando "shift". O "Clear display" ao ligar apaga tudo, e cabem só 1 ou 2 nomes. É possível, mas complexo e
+  frágil; cortar as trilhas dá liberdade total.
+
+### Teste 1: o RW é fraco no 1? (`tools/teste_rw_pico.py`)
+
+Amp ligado, fio do VSYS solto, Pico no USB: `.venv/bin/mpremote run tools/teste_rw_pico.py` e girar o volume um passo.
+O Pico puxa o RW **uma vez só**, na leitura logo depois de um caractere, com a saída na força mínima (2 mA) e só se o E
+ainda estiver em 0. O LCD recebe um "Set DDRAM addr" inofensivo (o controlador manda o endereço dele logo depois), e a
+escuta mostra se o RW desceu. O teste do RW usa o PIO1, porque o sniffer com o filtro de ruído ocupa o PIO0.
+
+Antes do teste, os fios soldados (mais longos) faziam a borda do E "tremer", e o sniffer contava pulsos a mais. O
+`sniffer.py` agora tem um filtro: só vale um pulso do E com 3 µs ou mais (os reais têm 10 µs ou mais). Com ele, 1408
+palavras saíram sem nenhum erro.
+
 ## Opção 3b, variação: desoldar e dobrar ou cortar os pinos 4–14
 
 Ideia do dono, a partir de uma sugestão do ChatGPT (soquete de perfil baixo): desoldar as 16 soldas de baixo, soltar o

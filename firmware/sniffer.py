@@ -33,10 +33,26 @@ _ENDLESS = 0xF0000001           # TRANS_COUNT com MODE = 0xF: o DMA não para nu
 
 @rp2.asm_pio(in_shiftdir=rp2.PIO.SHIFT_LEFT)
 def _sniff():
+    # Filtro de ruído: com fios longos, a borda do E "treme" e parece um pulso a mais. Os pulsos
+    # reais do amp duram 10 µs ou mais (capturas); o ruído, 1 µs ou menos. Só vale um pulso que
+    # fique em 1 por ~3 µs, seguido de E em 0 por ~1,7 µs. (A 150 MHz; jmp_pin = E.)
+    label("idle")
     wait(1, pin, 0)             # E sobe
+    set(x, 31)
+    label("high")
+    jmp(pin, "high_ok")
+    jmp("idle")                 # caiu cedo demais: era ruído
+    label("high_ok")
+    jmp(x_dec, "high") [13]     # 32 x 15 ciclos = 3,2 µs
     wait(0, pin, 0)             # E desce: o LCD leu o byte; RS, RW e dados ainda estão estáveis
     in_(pins, 11)
     push(noblock)               # fila cheia (não deve acontecer, o DMA esvazia): perde a palavra
+    label("low_restart")
+    wait(0, pin, 0)
+    set(x, 31)
+    label("low")
+    jmp(pin, "low_restart")     # subiu de novo logo: ruído na descida, espera descer outra vez
+    jmp(x_dec, "low") [6]       # 32 x 8 ciclos = 1,7 µs
 
 
 class Sniffer:
@@ -55,7 +71,8 @@ class Sniffer:
         self._mask = size // 4 - 1
         self._rd = 0
 
-        self.sm = rp2.StateMachine(sm_id, _sniff, in_base=Pin(BUS_BASE))
+        self.sm = rp2.StateMachine(sm_id, _sniff, freq=150_000_000, in_base=Pin(BUS_BASE),
+                                   jmp_pin=Pin(BUS_BASE))
         pio, sm = divmod(sm_id, 4)
         self.dma = rp2.DMA()
         ctrl = self.dma.pack_ctrl(size=2, inc_read=False, inc_write=True,
