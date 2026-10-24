@@ -6,10 +6,12 @@
     GET /names    os textos personalizados (nomes das entradas e telas de inicialização)
     PUT /names    troca os textos: {"inputs": {"TUNER": "Rega Planar 2"}, "boot": [...], "about": [...]}
                   (texto vazio = original; ver names.py)
+    outras        rotas extras, por prefixo: routes={"/update": ota.handle, "/bus": log.handle}
 
 Uso (com asyncio):
     asyncio.create_task(wifi_task(aviso))   # nunca trava nem levanta erro
     pub = Publisher(state, get_names=g, set_names=s)   # s(cfg) valida, guarda e aplica; levanta ValueError
+    (routes: handler(req, writer) assíncrono; req = Request, ver abaixo; responde com reply())
     asyncio.create_task(pub.serve())
     ...
     pub.changed()      # chame depois de cada state.update() que devolveu True
@@ -65,6 +67,11 @@ async def wifi_task(on_first_result=None, quick_tries=3, timeout_s=15, retry_s=3
                 else:
                     print("Wi-Fi attempt %d failed (status %d)" % (tries, wlan.status()))
                     result = (False, "status %d" % wlan.status())
+            elif not reported:
+                # Já conectado (programa reiniciado pelo mpremote, sem reset do chip de Wi-Fi).
+                ip = wlan.ifconfig()[0]
+                print("Wi-Fi ok. Open http://%s/  (or http://%s.local/)" % (ip, HOSTNAME))
+                result = (True, ip)
         except Exception as e:              # chip de Wi-Fi com problema, senha ausente etc.
             print("Wi-Fi error:", e)
             result = (False, str(e))
@@ -101,6 +108,7 @@ input{font:16px ui-monospace,Menlo,monospace;padding:6px 8px;border-radius:6px;b
 <h3>Custom texts</h3>
 <form id="nf"></form>
 <div class="st" id="nst"></div>
+<div class="st"><a href="/bus">bus statistics and log</a></div>
 <script>
 const F=[["power","Power"],["volume_db","Volume (dB)"],["input","Input"],["bass_db","Bass (dB)"],
 ["treble_db","Treble (dB)"],["balance","Balance"],["loudness","Loudness"],["speakers","Speakers"],
@@ -132,13 +140,42 @@ nf.onsubmit=e=>{e.preventDefault();const b={inputs:{},boot:["",""],about:["",""]
 """
 
 
+class Request:
+    """Um pedido HTTP já lido até os cabeçalhos. O corpo fica em reader (length bytes)."""
+
+    def __init__(self, method, path, headers, reader):
+        self.method = method
+        self.path, _, query = path.partition("?")
+        self.query = {}                 # "?tz=120&x=1" -> {"tz": "120", "x": "1"}
+        for p in query.split("&"):
+            key, _, value = p.partition("=")
+            self.query[key] = value
+        self.headers = headers          # nomes em minúsculas
+        self.reader = reader
+        self.length = int(headers.get("content-length", 0))
+
+
+async def reply(writer, status, ctype, body):
+    writer.write(("HTTP/1.1 %s\r\nContent-Type: %s\r\nContent-Length: %d\r\n"
+                  "Access-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n"
+                  % (status, ctype, len(body))).encode())
+    writer.write(body)
+    await writer.drain()
+
+
+async def reply_json(writer, obj, status="200 OK"):
+    await reply(writer, status, "application/json", json.dumps(obj).encode())
+
+
 class Publisher:
-    def __init__(self, state, get_names=None, set_names=None, port=80):
+    def __init__(self, state, get_names=None, set_names=None, port=80, routes=None):
         self.state = state
         self.get_names = get_names
         self.set_names = set_names
         self.port = port
+        self.routes = routes or {}
         self.listeners = []             # conexões abertas em /events
+        self.served = 0                 # pedidos respondidos desde que o Pico ligou
 
     def _json(self):
         return json.dumps(self.state.to_dict())
@@ -158,29 +195,34 @@ class Publisher:
     async def _client(self, reader, writer):
         try:
             request = await reader.readline()
-            length = 0
-            while True:                 # cabeçalhos: só interessa o tamanho do corpo
+            headers = {}
+            while True:
                 line = await reader.readline()
                 if not line or line == b"\r\n":
                     break
-                if line.lower().startswith(b"content-length:"):
-                    length = int(line[15:])
+                name, _, value = line.decode().partition(":")
+                headers[name.strip().lower()] = value.strip()
             parts = request.split()
-            method = parts[0].decode() if parts else "GET"
-            path = parts[1].decode() if len(parts) > 1 else "/"
+            req = Request(parts[0].decode() if parts else "GET",
+                          parts[1].decode() if len(parts) > 1 else "/", headers, reader)
+            path = req.path
+            route = path.split("/")[1].split(".")[0]    # "/bus.csv" -> "bus"; "/update/x" -> "update"
+            self.served += 1
 
             if path == "/names":
-                await self._names(writer, method, await reader.readexactly(length) if length else b"")
+                await self._names(writer, req.method,
+                                  await reader.readexactly(req.length) if req.length else b"")
             elif path == "/state":
-                body = self._json().encode()
-                await self._reply(writer, "200 OK", "application/json", body)
+                await reply(writer, "200 OK", "application/json", self._json().encode())
             elif path == "/events":
                 await self._events(writer)
                 return
             elif path == "/":
-                await self._reply(writer, "200 OK", "text/html; charset=utf-8", PAGE.encode())
+                await reply(writer, "200 OK", "text/html; charset=utf-8", PAGE.encode())
+            elif "/" + route in self.routes:
+                await self.routes["/" + route](req, writer)
             else:
-                await self._reply(writer, "404 Not Found", "text/plain", b"not found\n")
+                await reply(writer, "404 Not Found", "text/plain", b"not found\n")
         except Exception as e:
             print("http:", e)
         try:
@@ -191,24 +233,17 @@ class Publisher:
 
     async def _names(self, writer, method, body):
         import names
-        status, reply = "200 OK", None
+        status, answer = "200 OK", None
         if method == "PUT" and self.set_names:
             try:
                 self.set_names(json.loads(body))
             except ValueError as e:     # JSON inválido ou texto recusado por names.validate
-                status, reply = "400 Bad Request", {"error": str(e)}
-        if reply is None:
-            reply = {"config": self.get_names(), "inputs": names.INPUTS,
-                     "defaults": {"boot": ["ACOUSTIC", "SOLUTIONS"],
-                                  "about": ["Amplifier SP103", "SW version 1.0"]}}
-        await self._reply(writer, status, "application/json", json.dumps(reply).encode())
-
-    async def _reply(self, writer, status, ctype, body):
-        writer.write(("HTTP/1.1 %s\r\nContent-Type: %s\r\nContent-Length: %d\r\n"
-                      "Access-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n"
-                      % (status, ctype, len(body))).encode())
-        writer.write(body)
-        await writer.drain()
+                status, answer = "400 Bad Request", {"error": str(e)}
+        if answer is None:
+            answer = {"config": self.get_names(), "inputs": names.INPUTS,
+                      "defaults": {"boot": ["ACOUSTIC", "SOLUTIONS"],
+                                   "about": ["Amplifier SP103", "SW version 1.0"]}}
+        await reply_json(writer, answer, status)
 
     async def _events(self, writer):
         writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"

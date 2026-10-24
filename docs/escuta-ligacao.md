@@ -72,6 +72,40 @@ para 0**: valor de saída fixo em 0, trocando apenas a direção do pino.
 - Detalhe do RP2350 (errata E9): o pull-down interno não consegue baixar um pino que já esteve em 1. Não afeta a escuta,
   porque o amp define todos os níveis com força; só o teste no Pico precisou simular o nível 0 puxando o pino.
 
+## Página do barramento: `http://sp103.local/bus`
+
+Para conferir a escuta no amp e guardar o que o controlador escreveu (programa: `firmware/buslog.py`).
+
+- **Estatísticas** (atualizam a cada 2 s): palavras lidas, escritas, leituras do busy flag, telas, telas que o leitor
+  não reconheceu, quantas vezes o amp ligou ("clear display"), maior pausa da leitura e maior lote.
+  Se o "Biggest batch" ficar vermelho (3000 palavras ou mais numa leitura só), algumas palavras podem ter se perdido.
+- **Download log (CSV)**: as últimas 16 384 palavras (umas 100 telas), da mais antiga para a mais nova, com o horário
+  local. O Pico acerta o relógio pela internet ao conectar no Wi-Fi; sem internet, a coluna do horário fica vazia, mas
+  a coluna `ms` (relógio interno) continua.
+- **Clear log**: zera o registro e as contagens, para começar um teste limpo.
+
+Como analisar um teste no amp, passo a passo:
+
+1. Abra `http://sp103.local/bus` no celular ou no computador e toque em **Clear log**.
+2. Faça o que quer estudar no amp (girar o volume, trocar a entrada, abrir o menu Function) e anote a hora.
+3. Toque em **Download log (CSV)**. O arquivo (`sp103-bus-<data>-<hora>.csv`) abre no Numbers ou no Excel.
+4. Para ver as telas que o Pico montou, com o horário de cada uma:
+
+   ```sh
+   python3 tools/ler_bus.py ~/Downloads/sp103-bus-2026-10-24-1628.csv
+   python3 tools/ler_bus.py ~/Downloads/sp103-bus-2026-10-24-1628.csv --palavras   # cada palavra também
+   ```
+
+O horário de cada palavra é o da leitura pelo programa, que pega as palavras em lotes (a cada ~1 ms). Palavras do mesmo
+lote têm o mesmo horário, mas a ordem é sempre a certa. Para tempos finos (µs), continue usando o analisador lógico.
+
+Testes: `tools/test_buslog.py` (no computador) e `tools/teste_bus_pico.py` (no Pico, sem o amp: um "amp de mentira"
+escreve uma tela de volume a cada 2 s enquanto a escuta roda).
+
+## Atualizar o programa sem o cabo
+
+Ver `atualizacao-wifi.md`: `python3 tools/enviar.py`, com senha e volta automática para a versão anterior.
+
 ## Ainda em aberto
 
 - **Saber quando o amp vai para standby**: ao desligar, o controlador não escreve nada no display. Ao ligar, ele manda

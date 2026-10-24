@@ -119,6 +119,8 @@ O papel do Pico:
 | `GET /state` | o JSON acima |
 | `GET /events` | Server-Sent Events: um aviso a cada mudança (para o groove-rig fazer ciclo fechado, por exemplo "vá para -30 dB") |
 | `GET /` | página simples para ver o estado no celular |
+| `GET /bus` | estatísticas do barramento e download das últimas palavras (CSV com horário) |
+| `GET /update` | atualização do programa pelo Wi-Fi, com senha (`docs/atualizacao-wifi.md`) |
 
 Wi-Fi em vez de Bluetooth: o OceanO e o groove-rig já estão na rede, e o navegador do celular basta (sem app).
 
@@ -161,3 +163,7 @@ Wi-Fi em vez de Bluetooth: o OceanO e o groove-rig já estão na rede, e o naveg
   Testado com as capturas (`tools/test_sniffer.py`) e no Pico sem o amp (`tools/teste_sniffer_pico.py`); `main.py` agora
   roda a escuta. Sem resistores em série, e o Pico alimentado pelo pino 2 do LCD (5 V presente mesmo em standby) no VSYS.
   Ligação e testes que faltam: `docs/escuta-ligacao.md`.
+- **Atualização pelo Wi-Fi e página /bus (2026-10-24):** `firmware/ota.py` + `main.py` (volta automática para a versão
+  anterior) e `tools/enviar.py`, ver `docs/atualizacao-wifi.md`. `firmware/buslog.py`: estatísticas do barramento e
+  download das últimas 16 384 palavras com horário (`tools/ler_bus.py` remonta as telas). Testado na bancada com um
+  amp de mentira (`tools/teste_bus_pico.py`), incluindo as voltas automáticas.

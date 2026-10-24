@@ -97,3 +97,34 @@ class Bus:
     def take(self):
         self.pending = False
         return self.lcd.lines()
+
+
+def describe(word):
+    """Uma palavra em texto, para o registro do barramento (buslog.py). Não sabe se um dado
+    vai para a CGRAM ou para a tela (isso depende dos comandos anteriores)."""
+    value = (word >> DATA_SHIFT) & 0xFF
+    if word & RW:
+        return "read data" if word & RS else "read busy flag"
+    if word & RS:
+        return "write %r" % chr(value) if 0x20 <= value < 0x7F else "write 0x%02X" % value
+    if value & 0x80:
+        a = value & 0x7F
+        where = " (line %d, col %d)" % (a // 0x40 + 1, a % 0x40 + 1) if a % 0x40 < 40 else ""
+        return "set DDRAM address 0x%02X%s" % (a, where)
+    if value & 0x40:
+        return "set CGRAM address 0x%02X (char %d, row %d)" % (value & 0x3F, (value >> 3) & 7, value & 7)
+    if value & 0x20:
+        return "function set (%s bits, %s lines)" % (8 if value & 0x10 else 4, 2 if value & 0x08 else 1)
+    if value & 0x10:
+        return "shift %s %s" % ("display" if value & 0x08 else "cursor", "right" if value & 0x04 else "left")
+    if value & 0x08:
+        return "display %s, cursor %s, blink %s" % tuple(
+            "on" if value & b else "off" for b in (0x04, 0x02, 0x01))
+    if value & 0x04:
+        return "entry mode (%s%s)" % ("increment" if value & 0x02 else "decrement",
+                                       ", shift" if value & 0x01 else "")
+    if value & 0x02:
+        return "return home"
+    if value & 0x01:
+        return "clear display"
+    return "command 0x00"
