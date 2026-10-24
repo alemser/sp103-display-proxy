@@ -171,3 +171,7 @@ Wi-Fi em vez de Bluetooth: o OceanO e o groove-rig já estão na rede, e o naveg
   controlador solta só o D7 para ler o busy flag. O Pico só consegue injetar o último byte com bits zerados, não qualquer
   comando. Trocar nomes livremente exige cortar as trilhas. Ver `docs/opcoes-intercepcao.md`. Fios soldados nas pontas
   dos pinos do display; o sniffer ganhou um filtro contra o ruído do E.
+- **Escrita sem corte, os quatro truques comprovados no amp (2026-10-24):** o LCD ignora o comando 0x00 (teste 2),
+  uma letra da linha 1 vai para a linha 2 (teste 4: "oAPE"), e um desenho próprio é criado ao ligar e mostrado no lugar
+  de uma letra (teste 3: "rolume"). `tools/planejador.py` diz quais nomes cabem; os escolhidos são REGA, TAPE e Air.
+  Falta o programa final em tempo real. Armadilhas do PIO em `docs/opcoes-intercepcao.md`.

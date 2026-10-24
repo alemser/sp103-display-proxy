@@ -82,7 +82,107 @@ dados: falta testar. Nas capturas, o RW sobe ~21 µs antes do E (folga para o Pi
 Consequência: o comando injetado é sempre **o último byte com o bit 7 ligado, menos os bits que o Pico zerar**. Não dá
 para injetar qualquer comando. Desviar uma letra só funciona para um endereço que seja um "pedaço" (subconjunto de bits)
 do endereço original (da coluna 6 da linha 2, 0x45, dá para ir a 0x40, 0x05, 0x04, 0x01, 0x00). Montar nomes na área
-escondida, como descrito abaixo, **não é viável**. Para trocar nomes livremente: **cortar as trilhas** (opção 2).
+escondida, como descrito abaixo, **não é viável**. Mas há mais truques; ver "Opções para mudar os caracteres" logo abaixo.
+
+### Opções para mudar os caracteres, sem corte (análise de 2026-10-24)
+
+Todas só puxam fios para 0. "Fonte" = o caractere que o controlador está escrevendo naquele momento.
+
+| # | Opção | Como | Fios | Falta testar |
+|---|---|---|---|---|
+| A | Trocar letra por letra | zerar bits do caractere ("PHONO" → "PHONE") | dados | — |
+| B | Desenhos próprios | ao ligar, o controlador grava 8 desenhos (64 bytes) e nunca mais mexe. Os desenhos 1–7 (barras) nunca aparecem nas telas: zerando pontos das linhas cheias (0x1F), viram letras ou ícones. O 7 tem as linhas 1–7 cheias (letra 1 ponto mais baixa), o 6 as linhas 2–7 (minúsculas). Mostrar o desenho k: zerar bits de uma fonte que tenha os bits de k | dados | reconhecer o início do amp e aplicar 64 máscaras, 2 vezes (o controlador repete 64 ms depois) |
+| C | Mover letras | na leitura depois de uma letra, injetar "vá para a célula Y" (Y contido nos bits da letra anterior; um 'o' alcança qualquer coluna da linha 2) e zerar o comando de endereço do controlador (vira 0x00, que não existe) | RW + dados | se o LCD ignora o comando 0x00 |
+| D | Congelar células | transformar a escrita do controlador em comando 0x00 (puxar o RS e zerar os dados) | RS + dados | idem |
+| E | Comandos de tela | piscar, cursor, deslocar ou apagar a tela (comandos contidos nos bits da fonte) | RW + dados | — |
+
+O ponto fraco: **na troca de entrada, o controlador redesenha a tela uma vez só** (32 caracteres), e só volta a
+redesenhar quando alguém mexe no volume. O nome precisa sair inteiro desse redesenho, usando como fontes as letras da
+linha 1 (que não mudam: "Volume", "dB"), as do nome original e os espaços. O tempo para cada decisão é de ~20 µs (PIO com
+tabelas prontas).
+
+**Planejador** (`tools/planejador.py`): diz se um nome sai inteiro, em quantos dos 64 volumes, e com quais desenhos.
+Com os nomes configurados no Pico (2026-10-24):
+
+| Entrada | Nome | Resultado |
+|---|---|---|
+| DAB | Streaming | não sai: `S t r e n g` sem fonte possível nas suas posições |
+| TUNER | Rega Planar 2 | não sai: `a a n r 2` |
+| TAPE/AUX | Yamaha KX-393 | não sai: `Y a K X - 3 9 3` |
+| CD | Yamaha CD-S303 | não sai: `Y a C - S 3 3` |
+
+Juntos, eles precisariam de 15 desenhos próprios (o limite é 7), e nem montando aos poucos, em vários redesenhos, eles
+completam. **Nomes curtos funcionam**: "Mac" e "TV" sem desenho nenhum; "Rega", "Yamaha" e "Vinil" com 7 desenhos. "Stream"
+não. Isso ainda supõe que o comando 0x00 é ignorado e que os desenhos (por exemplo, o `Y`) cabem nas linhas disponíveis.
+
+Conclusão: sem corte, só nomes curtos (até ~6 letras, escolhidos com o planejador). Os nomes longos atuais exigem o
+corte das trilhas.
+
+Segunda rodada (nomes curtos propostos pelo dono), com o formato real dos desenhos (maiúsculas só no desenho 7):
+
+| Entrada | Proposto | Resultado | Alternativa que sai |
+|---|---|---|---|
+| TUNER | Rega | não sai: o `a` não alcança a coluna 4 | **REGA** ou **RegA** (sem desenhos) |
+| TAPE/AUX | Tape | não sai: `p` e `e` nas colunas 3 e 4 | **TAPE** (sem desenhos) |
+| DAB | AP/BT | não sai: `P` não cabe na coluna 2, `B` na 4, e só há um desenho para maiúscula | **Air** (desenho próprio para o `r`), **Mac** |
+| about | Oceano Amplifier / SP103 | não sai (20 de 32 células); nenhuma variante testada sai | manter o original |
+
+**Nomes escolhidos pelo dono para o caminho sem corte (2026-10-24): REGA (TUNER), TAPE (TAPE/AUX), Air (DAB).**
+
+### Teste 2: o LCD ignora o comando 0x00? Sim (`tools/teste_nop_pico.py`, 2026-10-24)
+
+O Pico zerou os 8 fios de dados durante o comando "vá para a linha 2, coluna 1" (0xC0) do controlador. O LCD recebeu 0x00
+e **não fez nada**: continuou no endereço seguinte (a coluna 17 da linha 1, escondida), e a primeira letra do nome novo
+foi parar lá. Trocando de TUNER para DAB, o display mostrou "**T**AB". O controlador seguiu normal. Girar o volume
+consertou a tela. Os truques C e D funcionam.
+
+Detalhes do programa:
+- Lê o barramento na **subida** do E (o controlador já pôs RS, RW e os dados; conferido nas capturas e com
+  `tools/diag_subida_pico.py`) e segura os fios até a descida, com o mesmo filtro de ruído do sniffer.
+- No MicroPython, `mov(pindirs, ...)` gera o mesmo código que `mov(exec, ...)` (0xA083): o PIO executa o valor como
+  instrução. A direção dos pinos só muda com `out(pindirs, n)` ou `set(pindirs, n)`. Na primeira tentativa, isso
+  prendeu o programa num laço, e ele nunca reconheceu o 0xC0.
+- O teste só aparece no display se as duas entradas começarem com letras diferentes (TUNER → TAPE/AUX não mostra nada).
+
+### Teste 4: mover uma letra da linha 1 para a linha 2. Funciona (`tools/teste_mover_pico.py`, 2026-10-24)
+
+Três passos num redesenho, todos só puxando fios para 0 (2 mA):
+1. Na leitura logo depois do 'V', puxar o RW e zerar D1, D2 e D4: o LCD recebe 0xD6 menos esses bits = **0xC0** ("vá para
+   a linha 2, coluna 1"). O controlador lê "ocupado" e pergunta de novo.
+2. O comando seguinte do controlador (0x81) vira 0x00 (ignorado): o 'o' cai na linha 2, coluna 1.
+3. O 0xC0 do controlador, mais adiante, vira 0x00: a primeira letra do nome vai para a coluna escondida, e o 'o' fica.
+
+Resultado no amp, trocando para TAPE/AUX: **"oAPE/AUX"**, com a linha 1 intacta (a célula do 'o' não foi reescrita). O
+redesenho atrasado consertou a tela. O programa PIO é genérico: uma fila de passos (palavra que dispara, fios a puxar, "agora"
+ou "na próxima leitura"), 29 instruções no PIO1. O programa final pode usar o mesmo formato.
+
+### Teste 3: criar um desenho próprio ao ligar. Funciona (`tools/teste_desenho_pico.py`, 2026-10-24)
+
+1. Desligar e ligar o amp **no botão de força**: só assim ele refaz a sequência completa ("ACOUSTIC SOLUTIONS" e a
+   gravação dos 8 desenhos, duas vezes com 64 ms de intervalo). Voltar do standby não grava os desenhos.
+2. O Pico espera o "Set CGRAM 0x40", conta 50 bytes e, nas linhas 2 a 7 do desenho 6, zera os pontos que não fazem
+   parte do `r`. Nas duas gravações, o desenho saiu exatamente como o `r` da fonte do LCD.
+3. Na tela normal, o 'V' (0x56) com D4 e D6 zerados vira 0x06: a linha 1 mostrou **"rolume"**, e ficou assim. O Pico também
+   tratou o redesenho atrasado. O desenho vale até o amp desligar.
+
+`tools/teste_mostrar_pico.py` é a mesma coisa sem a gravação (para quando o desenho já está no LCD).
+
+**Os quatro truques (A, B, C, D) funcionam no amp.** Falta o programa final, em tempo real.
+
+### Armadilhas do PIO (para o programa final)
+
+Cada uma custou pelo menos uma tentativa nos testes:
+
+| Armadilha | Sintoma | Como evitar |
+|---|---|---|
+| `mov(pindirs, ...)` no MicroPython gera o mesmo código que `mov(exec, ...)` | o PIO executa o valor como instrução e trava num laço | mudar a direção dos pinos só com `out(pindirs, n)` ou `set(pindirs, n)` |
+| `autopull=True` faz o `pull()` não fazer nada se o OSR estiver cheio | a fila sai desalinhada (o 1º valor vira o 2º) | sem autopull; `pull(ifempty)` quando precisar |
+| O padrão do MicroPython é `out_shiftdir=SHIFT_LEFT` | `out()` pega os bits do topo do OSR; a máscara nos bits baixos não puxa nada | sempre `out_shiftdir=SHIFT_RIGHT` |
+| Ruído no E (fios longos; o E é fraco em 1) | pulsos falsos e "piscadas" no meio do pulso: contagem adiantada, puxar e soltar fora de hora | aceitar a subida só depois de 3 µs em 1; soltar só depois de 1,7 µs em 0 (a mesma regra do `sniffer.py`). Para contar pulsos, uma máquina só de filtro avisa por IRQ |
+| Cada bloco PIO tem só 32 instruções | `ENOMEM` ao carregar | o sniffer (com filtro) fica no PIO0; a escrita, no PIO1 |
+
+Cada coluna aceita poucos caracteres: `python3 tools/planejador.py --paleta DAB` mostra a lista. As colunas 4 e 8 da linha 2
+são as mais restritas (`␣$(,@DHL`dhl` para o DAB).
 
 O plano abaixo foi escrito antes do teste e fica como registro.
 
