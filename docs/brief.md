@@ -157,3 +157,7 @@ Wi-Fi em vez de Bluetooth: o OceanO e o groove-rig já estão na rede, e o naveg
 - **Interceptação (etapa 6), em análise:** ver `docs/opcoes-intercepcao.md`. Sobrescrever em paralelo é inviável
   (o controlador segura E e dados com força). O T9311 não tem soquete. A opção menos intrusiva é cortar 11 trilhas no lado
   das soldas, sem tocar no display. A etapa 4 (só escutar) não precisa de nenhuma intervenção.
+- **Etapa 4, firmware pronto (2026-10-24):** `firmware/escuta.py` + `sniffer.py` (PIO + DMA circular) + `hd44780.py`.
+  Testado com as capturas (`tools/test_sniffer.py`) e no Pico sem o amp (`tools/teste_sniffer_pico.py`); `main.py` agora
+  roda a escuta. Sem resistores em série, e o Pico alimentado pelo pino 2 do LCD (5 V presente mesmo em standby) no VSYS.
+  Ligação e testes que faltam: `docs/escuta-ligacao.md`.
