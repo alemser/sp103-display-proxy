@@ -96,6 +96,36 @@ com cara de transistor) não.
 4. Se a tensão cair, ou o amp ficar estranho (display piscando, reiniciando): tire da tomada. A fonte não aguenta, e o
    Pico vai para um carregador USB próprio, sempre na tomada.
 
+## Pico dentro do amp (2026-10-24)
+
+Para fechar o gabinete com o Pico dentro, ele passa a ser alimentado pelo amp: o **fio vermelho** (pino 2 do LCD, +5 V)
+vai ao **VSYS, pino físico 39** do Pico (nunca ao 40, VBUS). O preto (GND) e os 11 sinais continuam como estão.
+
+Passo a passo:
+1. **Amp fora da tomada. USB do Pico desligado.**
+2. Encaixe o Dupont vermelho no pino 39 do Pico. Com o conector USB para cima, na fileira dos pinos 21-40: o 1º pino
+   do canto, colado ao USB, é o **40 (VBUS, não use)**; o **2º é o 39 (VSYS)**; o 3º é o 38 (GND). É a fileira do lado
+   oposto à dos sinais (o preto, no pino 3, e GP2-GP12 ficam na outra). Conte com cuidado.
+3. **Teste da fonte, antes de fechar** (ver acima): multímetro em tensão contínua entre os pinos 1 e 2 do LCD, amp na
+   tomada e ligado, Pico rodando (a página `http://sp103.local/` abre). A tensão tem que ficar entre 4,8 e 5,2 V por
+   alguns minutos, com o display e o controle remoto normais. Se cair, tire da tomada: a fonte do amp não aguenta e o
+   Pico precisa de um carregador USB próprio.
+4. Prenda o Pico isolado: espaçadores de nylon ou fita dupla face sobre uma placa isolante. Nenhum pino pode encostar
+   no metal do gabinete, e tudo longe da parte de 230 V (fonte, transformador, cabo de força).
+5. Prenda o feixe de fios com abraçadeira, sem puxar as soldas do LCD.
+6. Feche o gabinete. Desse ponto em diante, **atualize só pelo Wi-Fi** (`python3 tools/enviar.py`).
+
+Regras com o Pico dentro:
+- **Não ligue o USB com o fio vermelho no VSYS** (ver "Regra do USB"). Se precisar do cabo: amp fora da tomada, abrir,
+  soltar o vermelho, e só então o USB. Um diodo Schottky 1N5817 no fio vermelho (anodo no LCD, catodo no VSYS) acabaria
+  com essa regra.
+- O Pico fica ligado sempre que o amp estiver na tomada (o 5 V existe também em standby).
+- **O `r` de "Air" não é gravado**: ligado pelo amp, o Pico liga junto com ele e ainda está iniciando quando o
+  controlador grava os desenhos (logo depois de ligar no botão de força; do standby ele não grava). Sem o desenho, a
+  página avisa e a entrada DAB mostra "DAB". REGA e TAPE não usam desenho. Para ter o "Air": alimentar o Pico por um
+  carregador USB próprio (sem o fio vermelho), escolher um nome sem desenho (a página e o `tools/planejador.py`
+  dizem), ou, no futuro, gravar o desenho com o amp já ligado (ideia em `opcoes-intercepcao.md`).
+
 ## Regra de segurança do programa
 
 GP2–GP12 recebem 5 V do amp. Eles **nunca** podem ser saída com valor 1 (isso brigaria com o controlador).
@@ -124,7 +154,7 @@ Para conferir a escuta no amp e guardar o que o controlador escreveu (programa: 
 - **Estatísticas** (atualizam a cada 2 s): palavras lidas, escritas, leituras do busy flag, telas, telas que o leitor
   não reconheceu, quantas vezes o amp ligou ("clear display"), maior pausa da leitura e maior lote.
   Se o "Biggest batch" ficar vermelho (3000 palavras ou mais numa leitura só), algumas palavras podem ter se perdido.
-- **Download log (CSV)**: as últimas 16 384 palavras (umas 100 telas), da mais antiga para a mais nova, com o horário
+- **Download log (CSV)**: as últimas 8192 palavras (umas 50 telas), da mais antiga para a mais nova, com o horário
   local. O Pico acerta o relógio pela internet ao conectar no Wi-Fi; sem internet, a coluna do horário fica vazia, mas
   a coluna `ms` (relógio interno) continua.
 - **Clear log**: zera o registro e as contagens, para começar um teste limpo.

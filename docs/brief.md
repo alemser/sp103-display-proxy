@@ -165,7 +165,7 @@ Wi-Fi em vez de Bluetooth: o OceanO e o groove-rig já estão na rede, e o naveg
   Ligação e testes que faltam: `docs/escuta-ligacao.md`.
 - **Atualização pelo Wi-Fi e página /bus (2026-10-24):** `firmware/ota.py` + `main.py` (volta automática para a versão
   anterior) e `tools/enviar.py`, ver `docs/atualizacao-wifi.md`. `firmware/buslog.py`: estatísticas do barramento e
-  download das últimas 16 384 palavras com horário (`tools/ler_bus.py` remonta as telas). Testado na bancada com um
+  download das últimas palavras (hoje 8192) com horário (`tools/ler_bus.py` remonta as telas). Testado na bancada com um
   amp de mentira (`tools/teste_bus_pico.py`), incluindo as voltas automáticas.
 - **Escrita sem corte, testada (2026-10-24):** o RW e o RS são fracos no 1 (o Pico pode puxá-los com segurança), mas o
   controlador solta só o D7 para ler o busy flag. O Pico só consegue injetar o último byte com bits zerados, não qualquer
@@ -175,3 +175,10 @@ Wi-Fi em vez de Bluetooth: o OceanO e o groove-rig já estão na rede, e o naveg
   uma letra da linha 1 vai para a linha 2 (teste 4: "oAPE"), e um desenho próprio é criado ao ligar e mostrado no lugar
   de uma letra (teste 3: "rolume"). `tools/planejador.py` diz quais nomes cabem; os escolhidos são REGA, TAPE e Air.
   Falta o programa final em tempo real. Armadilhas do PIO em `docs/opcoes-intercepcao.md`.
+- **Escrita sem corte, programa final no Pico (2026-10-24):** `firmware/escrita.py` (motor PIO + DMA) e
+  `firmware/plano.py` (planos a partir dos nomes da página; `tools/test_plano.py` simula). REGA, TAPE e Air aparecem
+  depois de girar o volume ou de apertar de novo a entrada. Limites do método: no 1º toque de outra entrada, ao ligar
+  e depois do Function aparece o nome original até o próximo redesenho. Ideias para ir além sem cortar (o dono quer
+  continuar por aqui): `docs/opcoes-intercepcao.md`, "Etapa final sem corte".
+- **Instalação dentro do amp (2026-10-24):** o Pico fica dentro, alimentado pelo pino 2 do LCD (fio vermelho no VSYS,
+  pino 39); atualização só pelo Wi-Fi (`tools/enviar.py`). Ver `docs/escuta-ligacao.md`, "Pico dentro do amp".

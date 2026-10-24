@@ -7,6 +7,9 @@ estado é publicado em http://sp103.local/ (ou pelo IP).
 O display reserva (GP16..21), se estiver ligado, mostra uma cópia da tela do amp
 já com os textos personalizados: uma prévia do que a etapa 6 vai fazer no display do amp.
 
+Escreve no display do amp os nomes personalizados que cabem (escrita.py, plano.py), só
+puxando fios para 0. Para desligar: ENABLED = False em escrita.py.
+
 Também em http://sp103.local/bus: estatísticas do barramento e download das últimas
 palavras lidas (buslog.py). E aceita atualização pelo Wi-Fi (ota.py, tools/enviar.py).
 
@@ -18,6 +21,7 @@ Ou sozinho, ao ligar o Pico: main.py importa este arquivo.
 import time
 import asyncio
 
+import escrita
 import names
 import ota
 import sp103_screens as s
@@ -39,6 +43,8 @@ state = AmpState(texts["inputs"])
 bus = Bus()
 log = BusLog(bus)
 sniffer = Sniffer()
+writer = escrita.Writer()
+writer.configure(texts["inputs"])
 last_screen = None                      # a última tela completa do amp
 pub = None
 wifi_ok = False
@@ -66,6 +72,8 @@ def set_texts(cfg):
     names.save(texts)
     if state.set_names(texts["inputs"], time.ticks_ms()):
         pub.changed()
+    writer.configure(texts["inputs"])
+    writer.after_screen(bus.lcd, state.input)       # vale já no próximo redesenho
     draw()
 
 
@@ -82,14 +90,19 @@ async def listen():
             n += 1
         log.poll(ms, n)
         listen_ticks += 1
+        if bus.clears != clears:
+            # O amp ligou: os desenhos próprios são gravados daqui a 2 e 64 ms. Visto a cada
+            # lote (não só no fim da tela) para dar tempo de o escrita.py pegar a gravação.
+            clears = bus.clears
+            print("amp: power on (display reset)")
+            writer.power_on()
+        writer.poll()
         now = time.ticks_us()
         if n:
             quiet_since = now
         elif bus.pending and time.ticks_diff(now, quiet_since) > QUIET_US:
-            screen = bus.take()
-            if bus.clears != clears:
-                clears = bus.clears
-                print("amp: power on (display reset)")
+            # A tela que o LCD mostra pode ter o nome personalizado; o leitor recebe a original.
+            screen = writer.original(bus.take())
             if screen != last_screen:
                 last_screen = screen
                 print("amp: %r | %r" % screen)
@@ -97,6 +110,7 @@ async def listen():
                     pub.changed()
                 draw()
             log.screen(ms, state.screen != "unknown")
+            writer.after_screen(bus.lcd, state.input)  # prepara o próximo redesenho
         await asyncio.sleep_ms(1)
 
 
@@ -161,6 +175,7 @@ async def confirm_update():
 async def main():
     global pub
     pub = Publisher(state, get_names=lambda: texts, set_names=set_texts,
+                    names_extra=lambda: {"amp": writer.status(bus.lcd)},
                     routes={"/update": ota.handle, "/bus": log.handle})
     log.clear(time.ticks_ms())
     draw()

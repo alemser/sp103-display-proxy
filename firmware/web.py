@@ -99,6 +99,7 @@ body{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:16px system
 .k{color:var(--dim);font-size:13px}.v{font-size:22px;font-weight:600;margin-top:2px}
 .st{text-align:center;color:var(--dim);font-size:13px;margin-top:14px}
 h3,form{max-width:640px;margin:22px auto 8px}form{display:grid;grid-template-columns:auto 1fr;gap:8px 10px;align-items:center}
+.amp{grid-column:2;color:var(--dim);font-size:12px;margin-top:-4px}
 input{font:16px ui-monospace,Menlo,monospace;padding:6px 8px;border-radius:6px;border:1px solid var(--dim);
  background:var(--card);color:var(--fg)}button{grid-column:2;padding:8px;font-size:16px;border-radius:6px}
 </style></head><body>
@@ -127,15 +128,18 @@ const nf=document.getElementById("nf"),nst=document.getElementById("nst");
 const q=v=>(v||"").replace(/"/g,"&quot;");
 const row=(label,name,ph,v)=>'<label>'+label+'</label><input maxlength="16" name="'+name+'" placeholder="'+
  q(ph)+'" value="'+q(v)+'">';
-fetch("/names").then(r=>r.json()).then(d=>{const c=d.config;
- nf.innerHTML='<b>Inputs</b><span></span>'+d.inputs.map(k=>row(k,"i:"+k,k,c.inputs[k])).join("")+
+function loadNames(){fetch("/names").then(r=>r.json()).then(d=>{const c=d.config;
+ const amp=d.amp||{};
+ nf.innerHTML='<b>Inputs</b><span></span>'+d.inputs.map(k=>row(k,"i:"+k,k,c.inputs[k])+
+ (amp[k]?'<span class="amp">'+amp[k]+'</span>':'')).join("")+
  '<b>Startup</b><span></span>'+["boot","about"].map(s=>[0,1].map(n=>
- row(s+" "+(n+1),s+":"+n,d.defaults[s][n],c[s][n])).join("")).join("")+'<button>Save</button>'});
+ row(s+" "+(n+1),s+":"+n,d.defaults[s][n],c[s][n])).join("")).join("")+'<button>Save</button>'})}
+loadNames();
 nf.onsubmit=e=>{e.preventDefault();const b={inputs:{},boot:["",""],about:["",""]};
  for(const i of nf.querySelectorAll("input")){const [g,k]=i.name.split(":");
   if(g=="i")b.inputs[k]=i.value;else b[g][+k]=i.value}
- fetch("/names",{method:"PUT",body:JSON.stringify(b)}).then(r=>r.json()).then(d=>
- nst.textContent=d.error?"Error: "+d.error:"Saved.")};
+ fetch("/names",{method:"PUT",body:JSON.stringify(b)}).then(r=>r.json()).then(d=>{
+ nst.textContent=d.error?"Error: "+d.error:"Saved.";if(!d.error)loadNames()})};
 </script></body></html>
 """
 
@@ -168,10 +172,11 @@ async def reply_json(writer, obj, status="200 OK"):
 
 
 class Publisher:
-    def __init__(self, state, get_names=None, set_names=None, port=80, routes=None):
+    def __init__(self, state, get_names=None, set_names=None, port=80, routes=None, names_extra=None):
         self.state = state
         self.get_names = get_names
         self.set_names = set_names
+        self.names_extra = names_extra  # campos a mais no GET /names (ex.: o que cabe no display do amp)
         self.port = port
         self.routes = routes or {}
         self.listeners = []             # conexões abertas em /events
@@ -243,6 +248,8 @@ class Publisher:
             answer = {"config": self.get_names(), "inputs": names.INPUTS,
                       "defaults": {"boot": ["ACOUSTIC", "SOLUTIONS"],
                                    "about": ["Amplifier SP103", "SW version 1.0"]}}
+            if self.names_extra:
+                answer.update(self.names_extra())
         await reply_json(writer, answer, status)
 
     async def _events(self, writer):

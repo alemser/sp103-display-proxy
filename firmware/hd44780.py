@@ -30,12 +30,15 @@ class Lcd:
         self.inc = 1
         self.shift = 0                        # deslocamento do display (comando shift)
         self.cgram_mode = False
+        self.cgram = bytearray(64)            # os 8 desenhos próprios (8 linhas de 5 pontos cada)
+        self.cgaddr = 0
 
     def command(self, b):
         if b & 0x80:
             self.addr, self.cgram_mode = b & 0x7F, False
         elif b & 0x40:
             self.cgram_mode = True
+            self.cgaddr = b & 0x3F
         elif b & 0x20:
             pass                              # Function set: o amp usa sempre 8 bits
         elif b & 0x10:
@@ -52,7 +55,9 @@ class Lcd:
 
     def data(self, b):
         if self.cgram_mode:
-            return                            # desenho de caractere personalizado: ignoramos
+            self.cgram[self.cgaddr] = b & 0x1F    # uma linha de um desenho próprio
+            self.cgaddr = (self.cgaddr + 1) & 0x3F
+            return
         self.ddram[self.addr] = b
         a = self.addr + self.inc
         # O HD44780 pula de 0x27 para 0x40 e de 0x67 para 0x00.

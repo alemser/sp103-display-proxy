@@ -17,6 +17,7 @@ horário, mas a ordem é sempre a certa. Para tempos finos, use o analisador ló
 Roda igual no MicroPython (Pico) e no Python do computador (tools/test_buslog.py).
 """
 
+import gc
 import time
 from array import array
 
@@ -29,7 +30,7 @@ except ImportError:             # no computador o relógio não dá a volta
     def ticks_diff(a, b):
         return a - b
 
-SIZE = 16384                    # palavras guardadas (umas 100 telas; 96 KB de RAM)
+SIZE = 8192                     # palavras guardadas (umas 50 telas; 48 KB de RAM: o escrita.py também precisa)
 WARN_BATCH = 3000               # o sniffer guarda 4096: um lote perto disso pode ter perdido palavras
 
 
@@ -100,7 +101,7 @@ class BusLog:
             "lcd": [lcd_text(line) for line in self.bus.lcd.lines()],
         }
 
-    def csv(self, tz_min=0, chunk=200):
+    def csv(self, tz_min=0, chunk=100):
         """O registro em CSV, em pedaços de texto (gerador). Vai só até a última palavra do
         início do download. Sem cópia (não cabe na memória): as palavras que chegam entre um
         pedaço e outro vão para o fim do buffer; se chegarem tantas que sobrescrevam as que
@@ -120,6 +121,7 @@ class BusLog:
             k = stop
             if lines:
                 yield "".join(lines)
+            gc.collect()                        # pedaços pequenos e memória limpa: o Pico tem pouca
 
     async def handle(self, req, writer):
         """Rota /bus (ver web.Publisher)."""

@@ -180,6 +180,63 @@ Cada uma custou pelo menos uma tentativa nos testes:
 | O padrão do MicroPython é `out_shiftdir=SHIFT_LEFT` | `out()` pega os bits do topo do OSR; a máscara nos bits baixos não puxa nada | sempre `out_shiftdir=SHIFT_RIGHT` |
 | Ruído no E (fios longos; o E é fraco em 1) | pulsos falsos e "piscadas" no meio do pulso: contagem adiantada, puxar e soltar fora de hora | aceitar a subida só depois de 3 µs em 1; soltar só depois de 1,7 µs em 0 (a mesma regra do `sniffer.py`). Para contar pulsos, uma máquina só de filtro avisa por IRQ |
 | Cada bloco PIO tem só 32 instruções | `ENOMEM` ao carregar | o sniffer (com filtro) fica no PIO0; a escrita, no PIO1 |
+| O LCD lê RS e RW na **subida** do E (os dados, na descida) | puxar RS/RW no meio do pulso não faz nada: a letra a suprimir aparece ("TENAR") | RS e RW só antes do pulso: "depois deste pulso", "na próxima leitura" ou "depois da leitura" |
+| Depois de puxar o RW antes da leitura, soltar ao ver "E em 0" | solta antes do pulso começar: a injeção não acontece ("VGl me") | segurar: esperar o E subir e só então a descida confirmada |
+| Disparar pela leitura do busy flag | às vezes o LCD ainda termina o comando anterior quando o Pico olha (3 µs depois da subida): o "ocupado" e o endereço não estão prontos, e o plano para no meio ("TENER", "AiB") | disparar pelo comando de endereço (sempre igual) e esperar a leitura acabar (o RW descer); comparar sem o D7 (`IN_COUNT` = 10) |
+
+## Etapa final sem corte: o programa que escreve no display do amp (2026-10-24)
+
+Arquivos: `firmware/escrita.py` (motor), `firmware/plano.py` (planos), `tools/test_plano.py` (simulador). Ligado no
+`escuta.py`; desligar com `ENABLED = False` no `escrita.py`.
+
+- **PIO0**: o sniffer (máquina 0) e o filtro do E (máquina 1), que avisa o PIO1 a cada pulso de verdade (IRQ para o
+  bloco seguinte: `irq(0x1C)`, recurso do RP2350).
+- **PIO1**: o motor de passos (32 instruções), alimentado por DMA. Cada passo: a palavra que dispara (10 bits, sem o D7),
+  quantas falhas aceita (os passos "estritos" conferem a letra esperada no pulso certo e desistem se não bater) e a
+  ação: zerar dados agora, ou puxar RW/RS antes do próximo pulso, da próxima leitura ou depois da leitura.
+- **Gravação dos desenhos**: quando o amp liga (Clear display), o PIO1 troca por 0,5 s para o programa que esculpe as
+  letras escolhidas nos desenhos 6 e 7, e volta. A cópia do LCD (`hd44780.py`) guarda os desenhos para conferir.
+- **Planos**: os nomes vêm da página (names.json). Ao salvar, o Pico escolhe os desenhos (`plano.choose`, ~2 s) e
+  mostra na página, embaixo de cada entrada, se o nome cabe no display do amp. Depois de cada redesenho, faz o plano do
+  próximo para a entrada atual e a tela atual (≤ 170 ms no Pico, com cache) e arma o motor.
+- **A escuta desfaz a troca**: a tela com o nome personalizado volta a ser a original antes do leitor de telas, para o
+  estado na rede continuar dizendo "TUNER".
+- **Nomes padrão**: TUNER → REGA, TAPE/AUX → TAPE, DAB → Air (o `r` é o desenho 6).
+
+### O que funciona (testado no amp)
+
+- REGA, TAPE e Air aparecem depois de **girar o volume** (quando a barra some) e ao **apertar de novo** a mesma
+  entrada; a linha 1 continua certa. Air só depois de o amp ser ligado no botão de força com o Pico rodando.
+- Volume girando, menus e trocas de entrada: o motor desiste sem estragar a tela (guarda).
+- Simulador: os três nomes em todos os volumes, no estado estável, depois do nome original, com a barra e com a
+  aposta errada (o único risco: de DAB para DVD, "ViD" até o próximo redesenho).
+
+### Limites (não são erros: vêm do método sem corte)
+
+O Pico prepara o plano **antes** do redesenho e usa letras da linha 1 ("Volume", que vem antes da linha 2). Então:
+
+| Situação | Resultado | Por quê |
+|---|---|---|
+| 1º toque num botão de outra entrada | nome original até o próximo redesenho | o Pico aposta na entrada atual; outra entrada, ele desiste |
+| Ligar o amp | original na 1ª tela | a linha 1 mostrava "Amplifier SP103" (sem as letras a emprestar) |
+| Voltar do Function | original | a linha 1 mostrava o menu |
+
+O controlador não redesenha sozinho depois da troca de entrada (só depois do volume, quando a barra some). Contas do
+planejador: sem a linha 1, só TAPE sai; e os três nomes precisam do mesmo 'o' de "Volume" (com valores diferentes),
+então um 1º redesenho que sirva para todas as entradas é impossível.
+
+### Ideias para ir além sem cortar (o dono quer continuar por aqui)
+
+1. **Segundo motor no PIO1** (outra máquina, mesmo programa, `wait(1, irq, rel(4))` e o filtro avisando os IRQs 4, 5,
+   6): um plano "sem linha 1" para as entradas que permitem (hoje, TAPE) sempre armado. TAPE apareceria no 1º toque, ao
+   ligar e depois do Function. Cuidado: as máquinas dividem os mesmos pinos (só uma pode agir por redesenho).
+2. **Toque automático no volume pelo groove-rig**: quando o Pico vê uma tela que não conseguiu trocar, pede ao
+   groove-rig (IR, porta 7075) volume +1 e −1. Todos os nomes aparecem sozinhos ~6 s depois (a barra aparece e some).
+3. **Escolher nomes que não precisem da linha 1** (o planejador diz; hoje TAPE): esses poderiam valer sempre.
+4. **Lembrar a última entrada** (flash) não resolve o "ao ligar": a linha 1 ainda é a da tela anterior.
+5. **Gravar os desenhos com o amp já ligado**: com o Pico dentro do amp (alimentado por ele), ele perde a gravação dos
+   desenhos ao ligar. Com injeções "Set CGRAM" (0x40 + endereço, contido nos bits da letra anterior) e letras-fonte de
+   bits suficientes, dá para reescrever as linhas de um desenho em alguns redesenhos.
 
 Cada coluna aceita poucos caracteres: `python3 tools/planejador.py --paleta DAB` mostra a lista. As colunas 4 e 8 da linha 2
 são as mais restritas (`␣$(,@DHL`dhl` para o DAB).
