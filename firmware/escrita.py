@@ -185,6 +185,7 @@ class Writer:
         self.armed = None           # (entrada, nº de passos) do plano armado
         self.done = 0               # passos feitos no último plano
         self.last = None            # (entrada, passos feitos, passos do plano) do último redesenho
+        self.result = "idle"        # idle, armed, complete, aborted, carving
 
     # --- configuração (nomes da página) ---
 
@@ -212,6 +213,8 @@ class Writer:
                         "".join(sorted(set(need))))
                 if p.risk:
                     msg += "; switching to %s may show it wrong for 2-6 s" % "/".join(p.risk)
+                if self.last and self.last[0] == o:
+                    msg += "; last plan: %d/%d (%s)" % (self.last[1], self.last[2], self.result)
                 out[o] = msg
         return out
 
@@ -260,6 +263,7 @@ class Writer:
         _release()                  # pinos de volta a entrada (mesmo se parou segurando)
         if self.armed:
             self.last = (self.armed[0], self.done, self.armed[1])
+            self.result = "complete" if self.done == self.armed[1] else "aborted"
         self.armed = None
 
     def poll(self):
@@ -281,6 +285,7 @@ class Writer:
             return
         self._start(_carve, in_base=RS_PIN, out_base=D0_PIN)
         self.done = 0
+        self.result = "carving"
         self._feed(self._carve_words())
         self.sm.active(1)
         self.carve_until = time.ticks_add(time.ticks_ms(), CARVE_MS)
@@ -330,3 +335,4 @@ class Writer:
         self._feed(plan.words())
         self.sm.active(1)
         self.armed = (current_input, len(plan.steps))
+        self.result = "armed"

@@ -24,6 +24,8 @@ import asyncio
 import escrita
 import names
 import ota
+import refresh
+import secrets
 import sp103_screens as s
 from amp_state import AmpState
 from buslog import BusLog
@@ -45,6 +47,9 @@ log = BusLog(bus)
 sniffer = Sniffer()
 writer = escrita.Writer()
 writer.configure(texts["inputs"])
+_rig_host = getattr(secrets, "GROOVE_RIG_HOST", "")
+refresher = refresh.Refresh(
+    refresh.GrooveRig(_rig_host, getattr(secrets, "GROOVE_RIG_PORT", 7075)) if _rig_host else None)
 last_screen = None                      # a última tela completa do amp
 pub = None
 wifi_ok = False
@@ -103,14 +108,28 @@ async def listen():
         elif bus.pending and time.ticks_diff(now, quiet_since) > QUIET_US:
             # A tela que o LCD mostra pode ter o nome personalizado; o leitor recebe a original.
             screen = writer.original(bus.take())
+            input_changed = False
             if screen != last_screen:
                 last_screen = screen
                 print("amp: %r | %r" % screen)
-                if state.update(screen[0], screen[1], time.ticks_ms()):
+                old_input = state.input
+                changed = state.update(screen[0], screen[1], time.ticks_ms())
+                input_changed = state.input != old_input
+                if changed:
                     pub.changed()
                 draw()
             log.screen(ms, state.screen != "unknown")
-            writer.after_screen(bus.lcd, state.input)  # prepara o próximo redesenho
+            consumed = refresher.screen(state.screen, writer, bus.lcd, state.input)
+            # A primeira tela de uma nova entrada já chegou tarde demais para o plano.
+            # Não a alteramos: pedimos ao groove-rig o redraw conhecido, e só armamos
+            # depois de observar a barra de volume no próprio barramento.
+            requested = False
+            if state.screen == "normal" and input_changed and state.input in writer.names \
+                    and writer.feasible.get(state.input) is not None:
+                writer.stop()
+                requested = refresher.request(state.input, state.volume_db)
+            if not consumed and not requested:
+                writer.after_screen(bus.lcd, state.input)  # prepara o próximo redesenho
         await asyncio.sleep_ms(1)
 
 
@@ -175,7 +194,7 @@ async def confirm_update():
 async def main():
     global pub
     pub = Publisher(state, get_names=lambda: texts, set_names=set_texts,
-                    names_extra=lambda: {"amp": writer.status(bus.lcd)},
+                    names_extra=lambda: {"amp": writer.status(bus.lcd), "refresh": refresher.status()},
                     routes={"/update": ota.handle, "/bus": log.handle})
     log.clear(time.ticks_ms())
     draw()

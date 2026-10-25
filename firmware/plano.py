@@ -97,27 +97,28 @@ class Plan:
         return out
 
 
-def make(original, target, inputs, glyphs=None, current=None):
+def make(original, target, inputs, glyphs=None, current=None, allow_risk=False):
     """O plano para mostrar `target` quando o controlador desenha a entrada `original`.
 
     glyphs: {caractere: código} dos desenhos próprios gravados no LCD agora.
     current: a linha 2 que o LCD mostra agora (células já certas não precisam ser escritas),
     ou None. Tenta com a guarda completa; se não couber, com a guarda reduzida a 1 letra (o
     plano registra em `risk` as entradas que começam com a mesma letra).
-    Devolve um Plan, ou None se o nome não couber."""
+    `allow_risk` só existe para experiências controladas: permite a guarda reduzida
+    de uma letra. O padrão é seguro: se a entrada ainda puder ser confundida com
+    outra, não toca no LCD. Devolve um Plan, ou None se o nome não couber."""
     full = guard_len(original, inputs)
     risk = [o for o in inputs if o != original and pad(o)[0] == pad(original)[0]]
     # Sem contar com a tela atual o plano escreve todas as células: vale sempre, e a busca é
     # rápida. Contar com ela ("manter" células já certas) às vezes explode a busca: só depois.
-    for guard, why in ((full, []), (1, risk)):
-        if guard > full:
-            continue
+    options = [(full, [])]
+    if allow_risk and full > 1:
+        options.append((1, risk))
+    for guard, why in options:
         for cur in (None, current) if current is not None else (None,):
             plan = _make(original, target, glyphs or {}, cur, guard, why)
             if plan is not None:
                 return plan
-        if full == 1:
-            break
     return None
 
 

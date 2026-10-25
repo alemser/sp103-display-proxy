@@ -26,7 +26,7 @@ from amp_state import INPUTS   # noqa: E402
 from hd44780 import Lcd, RS, RW, DATA_SHIFT   # noqa: E402
 from sp103_screens import volume_line, volume_bar   # noqa: E402
 
-DEFAULT = {"TUNER": "REGA", "TAPE/AUX": "TAPE", "DAB": "Air"}
+DEFAULT = {"TUNER": "REGA", "TAPE/AUX": "TAPE"}
 GLYPHS = {"r": 6}               # o desenho gravado ao ligar (teste 3)
 VOLUMES = [-78.75, -40.0, -28.75, -5.0, 0.0]
 
@@ -201,6 +201,12 @@ def main():
         fails += bool(bad)
         if verbose:
             print(plano.describe(plan))
+    # Air só funciona com a guarda reduzida DAB/DVD. Esse modo é uma experiência
+    # explícita; o firmware normal prefere deixar a tela original a arriscar ViD.
+    if not args:
+        unsafe = plano.make("DAB", "Air", INPUTS, GLYPHS, current=plano.pad("DAB"))
+        print("DAB       -> 'Air'            %s" % ("BLOQUEADO (guarda insuficiente)" if unsafe is None else "FALHA"))
+        fails += unsafe is not None
     print("\n%s" % ("tudo certo" if not fails else "%d com problema" % fails))
     sys.exit(1 if fails else 0)
 
