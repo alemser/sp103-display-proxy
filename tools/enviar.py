@@ -15,6 +15,7 @@ Nunca envia main.py nem secrets.py: esses só pelo cabo, com o mpremote.
 import argparse
 import glob
 import hashlib
+import http.client
 import json
 import os
 import sys
@@ -104,7 +105,25 @@ def local_files(names):
     return out
 
 
-def wait(host, expected, started):
+def rollback_trial(host, timeout=60):
+    """Pede a volta se o teste iniciou, mesmo quando a resposta do POST se perdeu."""
+    try:
+        request(host, "POST", "/update/rollback", b"", password())
+    except (http.client.RemoteDisconnected, ConnectionError, OSError, urllib.error.URLError):
+        pass                            # confirma pelo estado abaixo; a resposta pode ter se perdido
+    started = time.time()
+    while time.time() - started < timeout:
+        time.sleep(2)
+        try:
+            st = request(host, "GET", "/update", timeout=5)
+        except (OSError, urllib.error.URLError):
+            continue
+        if st["state"] == "rolled_back":
+            return st
+    return None
+
+
+def wait(host, expected, expected_files, started):
     """Acompanha o reinício e o teste da versão nova, até confirmar ou voltar."""
     last = None
     while time.time() - started < WAIT_S:
@@ -115,6 +134,12 @@ def wait(host, expected, started):
             msg = "Pico reiniciando (ainda sem resposta)..."
         else:
             if st["state"] == "ok" and st["version"] == expected:
+                mismatched = sorted(n for n, digest in expected_files.items()
+                                    if st["files"].get(n) != digest)
+                if mismatched:
+                    print("\nVersão tem o código esperado, mas os hashes não conferem: %s." %
+                          ", ".join(mismatched))
+                    return False
                 print("\nPronto: versão %s confirmada. A anterior (%s) fica guardada no Pico." % (
                     expected, st["previous"]))
                 return True
@@ -124,7 +149,18 @@ def wait(host, expected, started):
                 print("Veja o erro pelo cabo: .venv/bin/mpremote (o Pico mostra o erro ao ligar).")
                 return False
             if st["state"] == "trial":
-                msg = "Versão %s em teste (o Pico confirma depois de 20 s funcionando)..." % st["version"]
+                mismatched = sorted(n for n, digest in expected_files.items()
+                                    if st["files"].get(n) != digest)
+                if mismatched:
+                    print("\nHash remoto diferente durante o teste: %s. Pedindo rollback..." %
+                          ", ".join(mismatched))
+                    old = rollback_trial(host)
+                    if old:
+                        print("Pico voltou com segurança para a versão %s." % old["version"])
+                    else:
+                        print("Não consegui confirmar o rollback; confira com --estado antes de novo deploy.")
+                    return False
+                msg = "Versão %s em teste; hashes conferem (o Pico confirma depois de 20 s funcionando)..." % st["version"]
             else:
                 msg = "Estado: %s, versão %s" % (st["state"], st["version"])
         if msg != last:
@@ -191,17 +227,35 @@ def main():
     print("\nEnviando %d arquivo(s):" % len(send))
     request(host, "POST", "/update/cancel", b"", pw)
     for name, data in send.items():
-        got = request(host, "PUT", "/update/" + name, data, pw, timeout=30)
-        if got["sha256"] != sha(data):
-            sys.exit("%s chegou diferente; nada foi aplicado. Tente de novo." % name)
-        print("  %-20s %6d bytes  ok" % (name, len(data)))
+        try:
+            got = request(host, "PUT", "/update/" + name, data, pw, timeout=30)
+        except (http.client.RemoteDisconnected, ConnectionError, OSError, urllib.error.URLError) as e:
+            # Alguns MicroPython fecham a conexão depois de gravar o corpo, antes de a
+            # resposta JSON chegar ao computador. O nome staged prova apenas que chegou
+            # ao arquivo temporário; a integridade será conferida pelos SHA-256 ativos
+            # durante o trial, antes de deixar a atualização confirmar.
+            check = request(host, "GET", "/update", timeout=5)
+            if name not in check["staged"]:
+                sys.exit("Resposta perdida ao enviar %s e o arquivo não apareceu no staging (%s). "
+                         "Nada foi aplicado." % (name, e))
+            print("  %-20s resposta HTTP perdida; staging presente, hash será conferido no trial" % name)
+        else:
+            if got["sha256"] != sha(data):
+                sys.exit("%s chegou diferente; nada foi aplicado. Tente de novo." % name)
+            print("  %-20s %6d bytes  ok" % (name, len(data)))
 
     expected = dict(st["files"])
     expected.update({n: sha(d) for n, d in send.items()})
     expected = version(expected)
-    request(host, "POST", "/update/apply", b"", pw)
+    expected_files = dict(st["files"])
+    expected_files.update({n: sha(d) for n, d in send.items()})
+    try:
+        request(host, "POST", "/update/apply", b"", pw)
+    except (http.client.RemoteDisconnected, ConnectionError, OSError, urllib.error.URLError):
+        # A resposta pode sumir se o Pico iniciar o reset logo após aceitar o apply.
+        pass
     print("\nAplicado. Versão nova: %s. O Pico reinicia e testa a versão nova:" % expected)
-    sys.exit(0 if wait(host, expected, time.time()) else 1)
+    sys.exit(0 if wait(host, expected, expected_files, time.time()) else 1)
 
 
 if __name__ == "__main__":

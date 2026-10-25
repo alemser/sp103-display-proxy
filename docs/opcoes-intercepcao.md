@@ -205,11 +205,32 @@ Arquivos: `firmware/escrita.py` (motor), `firmware/plano.py` (planos), `tools/te
 
 ### O que funciona (testado no amp)
 
-- REGA, TAPE e Air aparecem depois de **girar o volume** (quando a barra some) e ao **apertar de novo** a mesma
-  entrada; a linha 1 continua certa. Air só depois de o amp ser ligado no botão de força com o Pico rodando.
-- Volume girando, menus e trocas de entrada: o motor desiste sem estragar a tela (guarda).
-- Simulador: os três nomes em todos os volumes, no estado estável, depois do nome original, com a barra e com a
-  aposta errada (o único risco: de DAB para DVD, "ViD" até o próximo redesenho).
+- REGA e TAPE aparecem depois de **girar o volume** (quando a barra some) e ao **apertar de novo** a mesma
+  entrada; a linha 1 continua certa.
+- Volume e menus: a guarda impede o plano de agir fora da tela esperada. Em trocas muito
+  rápidas, o log de 2026-10-25 registrou os transientes `TUGE` e `TEGA`; portanto a
+  proteção atual **não** prova que uma entrada que mude no meio do redraw fique intacta.
+  Isso segue como falha aberta, não como comportamento aceito.
+- O teste antigo também mostrava Air, mas dependia de um plano que não satisfaz a guarda completa para DAB/DVD.
+  Nesta branch o planejador o bloqueia deliberadamente: DAB continua aparecendo como `DAB` até haver uma forma
+  confiável de saber que a entrada é DAB antes de usar fontes da linha 1. A mensagem da página é “doesn't fit”; isso
+  significa “sem plano seguro”, não falta de espaço físico no LCD nem, por si só, falha do desenho `r`.
+- Simulador: REGA e TAPE passam em estado estável, depois do nome original e com a barra. A guarda completa é
+  obrigatória; a aposta errada não é um modo de operação permitido.
+
+**Correção do registro e da segurança:** DAB → DVD não pode ser distinguido só pelo primeiro `D`; o plano DAB exige
+confirmar também a segunda letra (`A`) antes de qualquer ação destrutiva. Ao receber `V`, ele deve abortar e deixar `DVD`
+original. A anotação anterior `ViD` foi um typo; provavelmente o texto pretendido era `Vir`, mas isso não foi confirmado
+por captura ou log. Portanto, `ViD` não deve ser citado como algo que apareceu no display. O risco que motiva a guarda é
+uma escrita híbrida na entrada errada; não é uma alegação de que esse resultado específico tenha sido observado. A opção
+de guarda reduzida foi removida do planejador, não apenas desativada por padrão.
+
+A guarda não limita o nome personalizado a duas ou três letras: ela só identifica a entrada original antes da escrita.
+Para DAB, `DA` distingue a fonte de DVD (`DV`). A linha continua tendo até 16 posições visíveis, mas isso não permite
+escrever qualquer sequência arbitrária: o planejador precisa conseguir compor cada célula com as transações que o
+controlador já envia, só pode puxar bits para 0, precisa respeitar os endereços alcançáveis e atualmente dispõe de até
+dois desenhos próprios. Por isso até `Air` (três letras) pode não ter um plano seguro, enquanto nomes maiores podem ser
+viáveis se as letras e posições forem alcançáveis.
 
 ### Limites (não são erros: vêm do método sem corte)
 
@@ -217,26 +238,49 @@ O Pico prepara o plano **antes** do redesenho e usa letras da linha 1 ("Volume",
 
 | Situação | Resultado | Por quê |
 |---|---|---|
-| 1º toque num botão de outra entrada | nome original até o próximo redesenho | o Pico aposta na entrada atual; outra entrada, ele desiste |
+| 1º toque num botão de outra entrada | nome original até o próximo redesenho | o Pico só conhece a nova entrada depois de ler a tela completa |
 | Ligar o amp | original na 1ª tela | a linha 1 mostrava "Amplifier SP103" (sem as letras a emprestar) |
 | Voltar do Function | original | a linha 1 mostrava o menu |
 
-O controlador não redesenha sozinho depois da troca de entrada (só depois do volume, quando a barra some). Contas do
-planejador: sem a linha 1, só TAPE sai; e os três nomes precisam do mesmo 'o' de "Volume" (com valores diferentes),
-então um 1º redesenho que sirva para todas as entradas é impossível.
+### Redraw após a troca: observação ainda conflitante
 
-### Ideias para ir além sem cortar (o dono quer continuar por aqui)
+Há duas notas incompatíveis no histórico. A captura descrita em `descobertas-protocolo.md` registra um redraw espontâneo
+2–6 s após eventos; esta seção dizia que não havia redraw espontâneo. O log não inclui botões, então o redraw observado
+2,006 s depois pode ter sido natural ou causado pelo segundo toque relatado pelo dono. O Pico não tenta provocar outro
+redraw: apertar de novo a entrada ainda fornece outra oportunidade física para a escrita.
+Roteiro e telemetria (`/names` e `/bus`): `refresh-fechado.md`.
 
-1. **Segundo motor no PIO1** (outra máquina, mesmo programa, `wait(1, irq, rel(4))` e o filtro avisando os IRQs 4, 5,
-   6): um plano "sem linha 1" para as entradas que permitem (hoje, TAPE) sempre armado. TAPE apareceria no 1º toque, ao
-   ligar e depois do Function. Cuidado: as máquinas dividem os mesmos pinos (só uma pode agir por redesenho).
-2. **Toque automático no volume pelo groove-rig**: quando o Pico vê uma tela que não conseguiu trocar, pede ao
-   groove-rig (IR, porta 7075) volume +1 e −1. Todos os nomes aparecem sozinhos ~6 s depois (a barra aparece e some).
-3. **Escolher nomes que não precisem da linha 1** (o planejador diz; hoje TAPE): esses poderiam valer sempre.
-4. **Lembrar a última entrada** (flash) não resolve o "ao ligar": a linha 1 ainda é a da tela anterior.
-5. **Gravar os desenhos com o amp já ligado**: com o Pico dentro do amp (alimentado por ele), ele perde a gravação dos
-   desenhos ao ligar. Com injeções "Set CGRAM" (0x40 + endereço, contido nos bits da letra anterior) e letras-fonte de
-   bits suficientes, dá para reescrever as linhas de um desenho em alguns redesenhos.
+O firmware não consegue aplicar um plano à primeira tela de uma entrada nova: ela já terminou quando o leitor confirma
+qual entrada apareceu. Sem um repaint natural posterior, a próxima pressão na mesma entrada é que fornece outra tela
+para a escrita. O registro remoto de 2026-10-25 mostrou `TUNER` às 10:11:45.605 e `REGA` às
+10:11:47.611, mas o barramento não registra os botões; portanto, essa captura não prova se a segunda tela foi
+espontânea ou causada por outra pressão.
+
+Diagnóstico remoto adicional (2026-10-25 10:32:55 UTC): o Pico estava em `098f8be4`, estado normal `TUNER`, LCD
+modelado como `REGA`, refresh `complete` com 3 redraws verificados. O buffer tinha 649 palavras,
+4 telas, 0 telas desconhecidas, lote máximo 256 (sem indicação de perda) e nenhuma tela nova havia sido vista por cerca
+de 21 min. Isso confirma o estado estável, mas não esclarece a origem da tela de `REGA` 2,006 s após `TUNER` nem prova
+que o redraw foi espontâneo.
+
+### Alternativas sem corte, por custo/risco
+
+1. **Esperar o redraw espontâneo** — implementado. A cada tela completa `escuta.py` verifica a linha 2 reconstruída pelo
+   sniffer e rearma o plano do próximo redraw. A primeira tela após a troca pode ficar original. Isso não resolve a
+   integridade durante uma troca que se sobreponha ao redraw; as ocorrências `TUGE`/`TEGA` precisam de reprodução controlada.
+2. **Escutar passivamente o I²C dos PT2314 em CON51** — investigação, sem transmitir. Capturar SCL e os dois SDA,
+   comparar pacotes ao selecionar as seis entradas e descobrir se há uma assinatura que anteceda a tela. Primeiro
+   confirmar níveis, pull-ups e terra; a meta é observar com alta impedância, não dirigir o barramento.
+3. **Observar o receptor IR ou linhas dos botões** — possível fonte antecipada de intenção, se houver acesso seguro e
+   rastreável. Ainda exige mapear os sinais e distinguir pressionamento, repetição e comando recebido.
+4. **Usar a DDRAM escondida / shift do LCD** — o HD44780 tem 40 posições por linha, mas só mostra 16; deslocar a tela
+   afeta as duas linhas e pode estragar a linha do volume. Clear apaga a DDRAM e reinicia o shift. É uma experiência de
+   baixa prioridade, não um caminho confiável para mensagens arbitrárias.
+5. **Interposer removível no conector do display** — reversível em princípio, sem cortar trilhas, mas exige dessoldar
+   a barra de 16 pinos e há risco mecânico/térmico sem placa reserva. Para ser mestre independente, o Pico teria de
+   isolar RS, RW, E e D0–D7; mexer só no E não basta.
+
+Não levantar E em paralelo nem tentar saída alta contra o T9311. O método atual continua apenas afundando linhas durante
+transações válidas, com a guarda estrita. Não se recomenda intervenção física enquanto a placa reserva não existir.
 
 Cada coluna aceita poucos caracteres: `python3 tools/planejador.py --paleta DAB` mostra a lista. As colunas 4 e 8 da linha 2
 são as mais restritas (`␣$(,@DHL`dhl` para o DAB).

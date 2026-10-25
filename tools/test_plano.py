@@ -10,7 +10,7 @@ no PIO e entrega ao LCD (hd44780.Lcd) o que ele veria. Confere:
 3. volume: a linha 2 vira a barra; a guarda desiste e a tela sai como o controlador manda;
 4. aposta errada: o plano é de uma entrada e o controlador desenha outra.
 
-    python3 tools/test_plano.py                       # os nomes padrão (REGA, TAPE, Air)
+    python3 tools/test_plano.py                       # REGA/TAPE passam; DAB -> Air é bloqueado
     python3 tools/test_plano.py TUNER "Rega"          # um nome qualquer
     python3 tools/test_plano.py --passos TUNER REGA   # mostra os passos
 """
@@ -201,11 +201,11 @@ def main():
         fails += bool(bad)
         if verbose:
             print(plano.describe(plan))
-    # Air só funciona com a guarda reduzida DAB/DVD. Esse modo é uma experiência
-    # explícita; o firmware normal prefere deixar a tela original a arriscar ViD.
+    # Air não pode ser aplicado com uma guarda que confunda DAB com DVD. A
+    # proteção é invariável também no simulador: não há opção de guarda reduzida.
     if not args:
         unsafe = plano.make("DAB", "Air", INPUTS, GLYPHS, current=plano.pad("DAB"))
-        print("DAB       -> 'Air'            %s" % ("BLOQUEADO (guarda insuficiente)" if unsafe is None else "FALHA"))
+        print("DAB       -> 'Air'            %s" % ("SEM PLANO SEGURO (guarda DAB/DVD)" if unsafe is None else "FALHA"))
         fails += unsafe is not None
     print("\n%s" % ("tudo certo" if not fails else "%d com problema" % fails))
     sys.exit(1 if fails else 0)

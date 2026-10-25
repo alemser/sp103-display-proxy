@@ -80,6 +80,9 @@ Concluídas. Os detalhes estão em `docs/descobertas-protocolo.md`:
 O Pico **não** substitui o controlador e **não** emite IR. O controle do amp por IR já existe no projeto
 **groove-rig** (Broadlink, API na porta 7075, no Orange Pi "oceano").
 
+Os dois sistemas são independentes: o Pico pode publicar estado para qualquer cliente, inclusive o groove-rig, mas nunca
+faz requisições, envia IR nem pede que outro equipamento provoque um redraw do amplificador.
+
 O papel do Pico:
 1. **Observar** tudo o que o controlador escreve no LCD.
 2. **Guardar o estado do amp na memória**, atualizado a cada mudança.
@@ -138,7 +141,7 @@ Wi-Fi em vez de Bluetooth: o OceanO e o groove-rig já estão na rede, e o naveg
 | 2 | Leitor de telas (tela → estado), testado no Mac com as capturas `.lac` | não |
 | 3 | Wi-Fi: `/state`, `/events` e página, com estado de teste | não |
 | 4 | Sniffer real (PIO) no barramento do LCD do amp | sim, só ouvindo |
-| 5 | Integração com o groove-rig | sim |
+| 5 | Consumo opcional de `/state` e `/events` pelo groove-rig | sim |
 | 6 | Instalação final (interceptar o LCD, alimentação, detecção de power) | sim |
 
 ### Andamento
@@ -180,5 +183,11 @@ Wi-Fi em vez de Bluetooth: o OceanO e o groove-rig já estão na rede, e o naveg
   depois de girar o volume ou de apertar de novo a entrada. Limites do método: no 1º toque de outra entrada, ao ligar
   e depois do Function aparece o nome original até o próximo redesenho. Ideias para ir além sem cortar (o dono quer
   continuar por aqui): `docs/opcoes-intercepcao.md`, "Etapa final sem corte".
+- **Correção de segurança (2026-10-25, branch `codex/no-cut-closed-loop-refresh`):** o planejador agora exige a guarda
+  DAB/DVD completa e, por isso, não encontra um plano seguro para `DAB → Air`; DAB permanece original. A afirmação
+  histórica acima descreve o plano relaxado anterior, não o firmware atual desta branch. Para recuperar Air sem permitir
+  uma escrita híbrida na entrada errada, é necessário identificar DAB antes do redesenho por observação passiva do I²C,
+  do receptor IR ou dos botões. A anotação anterior `ViD` foi um typo; provavelmente o texto pretendido era `Vir`, mas isso
+  não foi confirmado por captura ou log.
 - **Instalação dentro do amp (2026-10-24):** o Pico fica dentro, alimentado pelo pino 2 do LCD (fio vermelho no VSYS,
   pino 39); atualização só pelo Wi-Fi (`tools/enviar.py`). Ver `docs/escuta-ligacao.md`, "Pico dentro do amp".

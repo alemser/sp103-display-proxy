@@ -1,97 +1,134 @@
-"""Redesenho fechado sem cortar as trilhas.
+"""Observação fechada da persistência, sem controlar o amplificador.
 
-O SP103 só dá uma chance de alterar uma tela durante o próprio redraw. Depois de
-uma troca de entrada o Pico só então sabe qual entrada veio, portanto pede ao
-groove-rig um +1/-1 de volume para provocar um redraw conhecido. A tela final só
-é considerada sucesso quando o sniffer a vê; enviar IR nunca é prova de sucesso.
+O Pico não é um segundo mestre do HD44780: ele só injeta durante uma escrita do
+controlador. Portanto, "persistir" significa armar novamente o plano após cada
+tela completa que o amplificador realmente redesenha. Este módulo não envia IR,
+HTTP, nem qualquer comando ao amplificador ou a outro equipamento.
 
-Por segurança, este módulo só é usado com planos de guarda completa. O motor de
-escrita continua a ser a última barreira: qualquer tela inesperada o faz soltar o
-barramento sem alterar nada.
+O resultado observado vem do modelo HD44780 alimentado pelo sniffer, não de uma
+leitura elétrica de volta do LCD. A guarda estrita de plano.py continua sendo a
+última barreira antes de qualquer injeção destrutiva.
 """
 
-import asyncio
 import time
 
+import plano
+from amp_state import lcd_text
 
-class GrooveRig:
-    """Cliente mínimo da API documentada do groove-rig, sem dependências HTTP."""
 
-    def __init__(self, host, port=7075):
-        self.host, self.port = host, port
+def _ticks_ms():
+    return time.ticks_ms() if hasattr(time, "ticks_ms") else int(time.monotonic() * 1000)
 
-    async def action(self, name):
-        reader, writer = await asyncio.open_connection(self.host, self.port)
-        try:
-            path = "/targets/amplifier/actions/" + name
-            request = ("POST %s HTTP/1.1\r\nHost: %s\r\nContent-Length: 0\r\n"
-                       "Connection: close\r\n\r\n") % (path, self.host)
-            writer.write(request.encode())
-            await writer.drain()
-            line = await reader.readline()
-            if not line.startswith(b"HTTP/1.1 2"):
-                raise OSError("groove-rig: " + line.decode().strip())
-        finally:
-            writer.close()
-            try:
-                await writer.wait_closed()
-            except Exception:
-                pass
+
+def _ticks_diff(a, b):
+    return time.ticks_diff(a, b) if hasattr(time, "ticks_diff") else a - b
 
 
 class Refresh:
-    """Uma transação por vez: pedido IR -> barra vista -> plano armado -> redraw."""
+    """Acompanha uma entrada até que um redraw real confirme o texto.
 
-    def __init__(self, rig=None, delay_ms=180, timeout_ms=9000):
-        self.rig = rig
-        self.delay_ms = delay_ms
-        self.timeout_ms = timeout_ms
+    A primeira tela que revela uma troca já terminou quando o sniffer a
+    reconhece. Não existe comando externo para fabricar outra: o escritor fica
+    armado e a confirmação só chega no próximo redraw do controlador.
+    """
+
+    def __init__(self):
         self.input = None
-        self.started = None
-        self.phase = "off" if rig is None else "idle"
+        self.phase = "idle"
         self.error = None
+        self.verified_redraws = 0
+        self.last_plan = None
+        self.requested_at = None
+        self.redraws_seen = 0
+        self.first_redraw_ms = None
+        self.first_verified_ms = None
+        self.last_actual_matches = None
+        self.last_actual = None
+        self.original_redraws = 0
+        self.unexpected_redraws = 0
+        self.integrity_errors = 0
 
     def status(self):
-        return {"phase": self.phase, "input": self.input, "error": self.error}
+        return {"phase": self.phase, "input": self.input, "error": self.error,
+                "verified_redraws": self.verified_redraws,
+                "redraws_seen": self.redraws_seen,
+                "first_redraw_ms": self.first_redraw_ms,
+                "first_verified_ms": self.first_verified_ms,
+                "last_actual_matches": self.last_actual_matches,
+                "last_actual": self.last_actual,
+                "last_plan": self.last_plan,
+                "original_redraws": self.original_redraws,
+                "unexpected_redraws": self.unexpected_redraws,
+                "integrity_errors": self.integrity_errors}
 
-    def request(self, input_name, volume_db):
-        """Inicia um refresh apenas quando nenhum outro está em curso."""
-        if self.rig is None or self.phase != "idle":
+    def request(self, input_name):
+        """Começa a observar a entrada; nunca envia comandos ao amplificador."""
+        if input_name is None:
             return False
-        self.input, self.error = input_name, None
-        self.phase = "sending"
-        self.started = time.ticks_ms()
-        asyncio.create_task(self._nudge(volume_db))
+        self.input = input_name
+        self.phase = "waiting_redraw"
+        self.error = None
+        self.verified_redraws = 0
+        self.last_plan = None
+        self.requested_at = _ticks_ms()
+        self.redraws_seen = 0
+        self.first_redraw_ms = None
+        self.first_verified_ms = None
+        self.last_actual_matches = None
+        self.last_actual = None
+        self.original_redraws = 0
+        self.unexpected_redraws = 0
+        self.integrity_errors = 0
         return True
 
-    async def _nudge(self, volume_db):
-        # No limite superior não existe +1; desce e volta. Em qualquer outro
-        # ponto sobe e volta. O estado final é conferido pelo sniffer.
-        first = "volume_down" if volume_db is not None and volume_db >= 0 else "volume_up"
-        second = "volume_up" if first == "volume_down" else "volume_down"
-        try:
-            await self.rig.action(first)
-            await asyncio.sleep_ms(self.delay_ms)
-            await self.rig.action(second)
-            self.phase = "waiting_bar"
-        except Exception as e:
-            self.error, self.phase = str(e), "failed"
-
     def screen(self, screen, writer, lcd, input_name):
-        """Chamado depois de cada tela completa; devolve True se consumiu a tela."""
-        if self.phase == "waiting_bar" and screen == "volume":
-            # Só agora armamos: o próximo redraw normal é o que queremos editar.
-            writer.after_screen(lcd, self.input)
-            self.phase = "armed"
-            return True
-        if self.phase == "armed" and screen == "normal" and input_name == self.input:
-            writer.stop()               # fixa a telemetria antes de declarar resultado
-            self.phase = "complete" if writer.result == "complete" else "failed"
-            if self.phase == "failed":
-                self.error = "write plan aborted"
-            return True
-        if self.phase in ("sending", "waiting_bar", "armed") and self.started is not None \
-                and time.ticks_diff(time.ticks_ms(), self.started) > self.timeout_ms:
-            writer.stop()
-            self.phase, self.error = "failed", "refresh timeout"
-        return False
+        """Observa uma tela completa. Não consome o evento nem impede o próximo plano."""
+        if self.phase in ("idle", "cancelled"):
+            return
+        if input_name != self.input:
+            self.phase = "cancelled"
+            self.error = "entrada mudou antes da confirmação"
+            return
+        if screen != "normal":
+            return
+
+        # after_screen() será chamado logo depois pelo laço principal. writer.stop()
+        # já foi chamado antes desta função, então last/result correspondem ao redraw.
+        target = writer.names.get(self.input)
+        if not target:
+            return
+        expected = plano.shown(target, writer.wanted)
+        actual = lcd.lines()[1]
+        self.last_actual = lcd_text(actual)
+        self.last_plan = writer.result
+        now = _ticks_ms()
+        age_ms = _ticks_diff(now, self.requested_at) if self.requested_at is not None else None
+        self.redraws_seen += 1
+        if self.first_redraw_ms is None:
+            self.first_redraw_ms = age_ms
+        have_glyphs = writer.glyphs(lcd)
+        glyphs_ok = True
+        for ch in target:
+            if ch in writer.wanted and ch not in have_glyphs:
+                glyphs_ok = False
+                break
+        self.last_actual_matches = actual == expected
+        if self.last_actual_matches and glyphs_ok:
+            self.verified_redraws += 1
+            if self.first_verified_ms is None:
+                self.first_verified_ms = age_ms
+            self.phase, self.error = "complete", None
+        elif self.last_actual_matches:
+            # Código DDRAM certo, mas o desenho CGRAM não foi confirmado: o texto
+            # visível não pode ser considerado íntegro.
+            self.integrity_errors += 1
+            self.phase = "waiting_glyphs"
+            self.error = "desenho CGRAM ainda não observado"
+        else:
+            if actual == plano.pad(self.input):
+                self.original_redraws += 1
+            else:
+                self.unexpected_redraws += 1
+            # O plano continua sendo rearmado pelo laço principal no próximo redraw.
+            self.phase = "degraded" if self.phase == "complete" else "waiting_redraw"
+            self.error = "linha 2 não confere após redraw"

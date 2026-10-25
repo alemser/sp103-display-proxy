@@ -18,7 +18,7 @@ linha pode misturar o valor velho com o novo ("Volume -27.75" no lugar de
 
 BOX = "\x00"                    # caractere personalizado 0: caixa das barras
 INPUTS = ("PHONO", "TUNER", "TAPE/AUX", "CD", "DVD", "DAB")
-# Os mesmos ids que o groove-rig usa para as entradas do SP103.
+# Identificadores estáveis, em minúsculas, para clientes da API.
 INPUT_IDS = {"PHONO": "phono", "TUNER": "tuner", "TAPE/AUX": "tape_aux",
              "CD": "cd", "DVD": "dvd", "DAB": "dab"}
 VOLUME_MIN = -78.75             # PT2314: 0 a -78,75 dB, passos de 1,25 dB
@@ -194,7 +194,7 @@ class AmpState:
         self.power = None           # "on" quando alguma tela é reconhecida
         self.volume_db = None
         self.input = None           # nome original no amp: "TUNER"
-        self.input_id = None        # id do groove-rig: "tuner"
+        self.input_id = None        # identificador estável da entrada: "tuner"
         self.input_name = None      # nome da tabela, ou o original: "Rega Planar 2"
         self.bass_db = None
         self.treble_db = None

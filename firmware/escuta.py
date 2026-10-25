@@ -25,7 +25,6 @@ import escrita
 import names
 import ota
 import refresh
-import secrets
 import sp103_screens as s
 from amp_state import AmpState
 from buslog import BusLog
@@ -47,14 +46,13 @@ log = BusLog(bus)
 sniffer = Sniffer()
 writer = escrita.Writer()
 writer.configure(texts["inputs"])
-_rig_host = getattr(secrets, "GROOVE_RIG_HOST", "")
-refresher = refresh.Refresh(
-    refresh.GrooveRig(_rig_host, getattr(secrets, "GROOVE_RIG_PORT", 7075)) if _rig_host else None)
+refresher = refresh.Refresh()
 last_screen = None                      # a última tela completa do amp
 pub = None
 wifi_ok = False
 listen_ticks = 0                        # voltas da escuta: mostra que ela não travou
 notice_until = None                     # enquanto houver um aviso no display, as telas esperam
+rearm_pending = False                   # PUT /names pediu um rearme fora do redraw
 
 
 def draw():
@@ -72,18 +70,23 @@ def draw():
 
 def set_texts(cfg):
     """Chamado pelo PUT /names: valida, guarda na flash e aplica na hora."""
-    global texts
+    global texts, rearm_pending
     texts = names.validate(cfg)
     names.save(texts)
     if state.set_names(texts["inputs"], time.ticks_ms()):
         pub.changed()
     writer.configure(texts["inputs"])
-    writer.after_screen(bus.lcd, state.input)       # vale já no próximo redesenho
+    if state.screen == "normal" and state.input in writer.names \
+            and writer.feasible.get(state.input) is not None:
+        refresher.request(state.input)
+    # Não rearma aqui: o plano pode estar no meio de um redraw. O laço da
+    # escuta espera o barramento ficar quieto e arma com os textos novos.
+    rearm_pending = True
     draw()
 
 
 async def listen():
-    global last_screen, listen_ticks
+    global last_screen, listen_ticks, rearm_pending
     quiet_since = time.ticks_us()
     clears = 0
     while True:
@@ -105,7 +108,8 @@ async def listen():
         now = time.ticks_us()
         if n:
             quiet_since = now
-        elif bus.pending and time.ticks_diff(now, quiet_since) > QUIET_US:
+        quiet = time.ticks_diff(now, quiet_since) > QUIET_US
+        if not n and bus.pending and quiet:
             # A tela que o LCD mostra pode ter o nome personalizado; o leitor recebe a original.
             screen = writer.original(bus.take())
             input_changed = False
@@ -119,17 +123,24 @@ async def listen():
                     pub.changed()
                 draw()
             log.screen(ms, state.screen != "unknown")
-            consumed = refresher.screen(state.screen, writer, bus.lcd, state.input)
-            # A primeira tela de uma nova entrada já chegou tarde demais para o plano.
-            # Não a alteramos: pedimos ao groove-rig o redraw conhecido, e só armamos
-            # depois de observar a barra de volume no próprio barramento.
-            requested = False
-            if state.screen == "normal" and input_changed and state.input in writer.names \
+            # Fecha o plano do redraw recém-observado antes de verificar o resultado.
+            # A observação da entrada nova começa com a primeira tela completa;
+            # só um redraw posterior pode confirmar a escrita nessa topologia.
+            writer.stop()
+            if state.screen == "normal" and input_changed \
+                    and state.input in writer.names \
                     and writer.feasible.get(state.input) is not None:
-                writer.stop()
-                requested = refresher.request(state.input, state.volume_db)
-            if not consumed and not requested:
-                writer.after_screen(bus.lcd, state.input)  # prepara o próximo redesenho
+                refresher.request(state.input)
+            refresher.screen(state.screen, writer, bus.lcd, state.input)
+            writer.after_screen(bus.lcd, state.input)
+            rearm_pending = False
+        elif not n and quiet and rearm_pending \
+                and writer.carve_until is None:
+            # PUT /names: arma só com o barramento parado, nunca no meio de um
+            # redraw, e aproveita a tela completa que o modelo tem.
+            rearm_pending = False
+            writer.stop()
+            writer.after_screen(bus.lcd, state.input)
         await asyncio.sleep_ms(1)
 
 

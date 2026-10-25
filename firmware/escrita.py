@@ -183,9 +183,11 @@ class Writer:
         self.cache = {}
         self.carve_until = None
         self.armed = None           # (entrada, nº de passos) do plano armado
-        self.done = 0               # passos feitos no último plano
+        self.done = 0               # passos executados na tentativa atual/mais recente
         self.last = None            # (entrada, passos feitos, passos do plano) do último redesenho
+        self.last_result = None     # resultado do último plano; separado do plano atual
         self.result = "idle"        # idle, armed, complete, aborted, carving
+        self.running = False        # há PIO/DMA que pode ter deixado um pino como saída
 
     # --- configuração (nomes da página) ---
 
@@ -213,8 +215,11 @@ class Writer:
                         "".join(sorted(set(need))))
                 if p.risk:
                     msg += "; switching to %s may show it wrong for 2-6 s" % "/".join(p.risk)
+                if self.armed and self.armed[0] == o:
+                    msg += "; current plan: %d/%d (armed)" % (self.done, self.armed[1])
                 if self.last and self.last[0] == o:
-                    msg += "; last plan: %d/%d (%s)" % (self.last[1], self.last[2], self.result)
+                    msg += "; last plan: %d/%d (%s)" % (
+                        self.last[1], self.last[2], self.last_result)
                 out[o] = msg
         return out
 
@@ -251,19 +256,26 @@ class Writer:
             v = mem32[_PIO1_SM0_SHIFTCTRL]
             mem32[_PIO1_SM0_SHIFTCTRL] = (v & ~0x1F) | _IN_COUNT    # mov(x, pins) vê só 10 fios
 
-    def _feed(self, words):
-        self.buf = array("I", words)
+    def _feed(self, words, prepared=False):
+        # Planos em cache já guardam o array que o DMA lê. _carve ainda monta
+        # uma lista nova porque os desenhos podem mudar a cada power-on.
+        self.buf = words if prepared else array("I", words)
         ctrl = self.dma.pack_ctrl(size=2, inc_read=True, inc_write=False, treq_sel=_DREQ_PIO1_TX0)
         self.dma.config(read=self.buf, write=_PIO1_TXF0, count=len(words), ctrl=ctrl, trigger=True)
 
     def stop(self):
-        if self.sm is not None:
+        # after_screen() chama stop() defensivamente e _start() chama de novo.
+        # Evitar duas ou três reconstruções de Pin por tela no caminho quente;
+        # mas, se o PIO foi armado, sempre desliga DMA/SM e solta todos os fios.
+        if self.running:
             self.sm.active(0)
-        self.dma.active(0)
-        _release()                  # pinos de volta a entrada (mesmo se parou segurando)
+            self.dma.active(0)
+            _release()              # pinos de volta a entrada (mesmo se parou segurando)
+            self.running = False
         if self.armed:
             self.last = (self.armed[0], self.done, self.armed[1])
-            self.result = "complete" if self.done == self.armed[1] else "aborted"
+            self.last_result = "complete" if self.done == self.armed[1] else "aborted"
+            self.result = self.last_result
         self.armed = None
 
     def poll(self):
@@ -288,6 +300,7 @@ class Writer:
         self.result = "carving"
         self._feed(self._carve_words())
         self.sm.active(1)
+        self.running = True
         self.carve_until = time.ticks_add(time.ticks_ms(), CARVE_MS)
 
     def _carve_words(self):
@@ -309,7 +322,7 @@ class Writer:
         return words
 
     def after_screen(self, lcd, current_input):
-        """Depois de cada redesenho: arma o plano do próximo (aposta: a entrada não muda)."""
+        """Depois de cada redesenho: arma o plano da próxima tela da mesma entrada."""
         if self.carve_until is not None:
             return
         self.stop()
@@ -321,18 +334,33 @@ class Writer:
         if any(line1[c] != plano.LINE1_TEXT[c] for c in plano.LINE1_STATIC):
             return
         have = self.glyphs(lcd)
-        key = (current_input, name, tuple(sorted(have.items())), line2)
-        plan = self.cache.get(key)
-        if key not in self.cache:
+        # `wanted` não muda entre configure()s e cada desenho usa um código
+        # próprio; uma máscara dos códigos presentes identifica `have` sem
+        # criar lista/tuplas ordenadas a cada tela.
+        glyph_key = 0
+        for code in have.values():
+            glyph_key |= 1 << code
+        key = (current_input, name, glyph_key, line2)
+        cached = self.cache.get(key)
+        if cached is None:
             plan = plano.make(current_input, name, INPUTS, have, current=line2)
-            if len(self.cache) > 32:
+            # Uma entrada normal tem, na prática, duas telas reaproveitáveis
+            # (original e personalizada). Limitar evita reter planos criados por
+            # telas transitórias, sem tirar os acertos de cache usuais.
+            if len(self.cache) >= 12:
                 self.cache = {}
-            self.cache[key] = plan
+            # O buffer do DMA tem no máximo 3 palavras por passo. Manter esse
+            # pequeno array ao lado do plano evita alocar uma lista e um array em
+            # cada redraw repetido; o limite do cache também limita essa RAM.
+            cached = (plan, array("I", plan.words()) if plan is not None else None)
+            self.cache[key] = cached
+        plan, words = cached
         if plan is None:
             return
         self._start(_steps, in_base=E_PIN, out_base=RS_PIN)
         self.done = 0
-        self._feed(plan.words())
+        self._feed(words, prepared=True)
         self.sm.active(1)
+        self.running = True
         self.armed = (current_input, len(plan.steps))
         self.result = "armed"

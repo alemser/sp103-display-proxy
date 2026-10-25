@@ -216,9 +216,13 @@ Medido com o multímetro (amp em standby, iguais com o amp ligado) e com o Pico 
 - **Busy flag em 1 → ele pergunta de novo.** Com o bit 7 em 1 ("ocupado"), o controlador fez outra leitura e depois
   seguiu normal: não há limite de tempo nem erro visível.
 - **RW sobe ~21 µs antes do E** nas leituras; os pulsos do E duram 10 µs ou mais.
-- **Redesenho atrasado:** depois de cada evento (volume ou troca de entrada), o controlador redesenha a tela na hora e
-  **de novo, sozinho, 2 a 6 s depois** (o mesmo mecanismo que faz a barra de volume voltar ao nome). No teste 2, o "TAB"
-  ficou na tela por 2 a 4 s e voltou a "DAB" nesse redesenho. Quem mexe na tela precisa agir em todos os redesenhos.
+- **Redesenho atrasado (observação a repetir):** em uma sequência de bancada registrada, depois de cada evento (volume
+  ou troca de entrada), o controlador redesenhou na hora e **de novo, sozinho, 2 a 6 s depois**. No teste 2, o "TAB"
+  ficou na tela por 2 a 4 s e voltou a "DAB" nesse segundo redraw. `opcoes-intercepcao.md` contém uma conclusão antiga
+  incompatível dizendo que só haveria redraw depois de volume; ainda não sabemos se foi outro tipo de troca/estado ou
+  um erro de interpretação. Como `/bus` não registra botões, a tela de 2–6 s pode também ter vindo de um segundo toque.
+  O firmware não provoca um repaint: repetir sem tocar em botões ou volume e registrar `/bus` por pelo menos 10 s antes
+  de tratar o redraw natural como garantido.
 - **O LCD ignora o comando 0x00** (teste 2): ele não muda de endereço nem de modo. Trocando de TUNER para DAB com o
   0xC0 zerado, a tela mostrou "TAB".
 - **Na subida do E, RS, RW e os dados já estão no lugar** (comandos e caracteres), e assim ficam até a descida.
