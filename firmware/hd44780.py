@@ -29,6 +29,7 @@ class Lcd:
         self.addr = 0
         self.inc = 1
         self.shift = 0                        # deslocamento do display (comando shift)
+        self.display_on = True                # comando "display on/off" (0x08 / 0x0C)
         self.cgram_mode = False
         self.cgram = bytearray(64)            # os 8 desenhos próprios (8 linhas de 5 pontos cada)
         self.cgaddr = 0
@@ -44,6 +45,8 @@ class Lcd:
         elif b & 0x10:
             if b & 0x08:
                 self.shift += -1 if b & 0x04 else 1
+        elif b & 0x08:
+            self.display_on = bool(b & 0x04)
         elif b & 0x04:
             self.inc = 1 if b & 0x02 else -1
         elif b & 0x02:

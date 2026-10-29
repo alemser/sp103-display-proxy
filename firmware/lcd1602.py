@@ -44,8 +44,16 @@ class Lcd1602:
         """Reinicia o display. Também corrige o "texto quebrado" do modo 4 bits:
         se um mau contato fizer o display perder meio byte, ele passa a juntar
         as metades erradas até ser reiniciado. Esta sequência resincroniza."""
-        # Sequência do datasheet para entrar no modo 4 bits, partindo de qualquer estado.
         time.sleep_ms(50)
+        self.on = True
+        self.resync()
+        self.command(0x01)              # limpa
+
+    def resync(self):
+        """A parte do reset() que resincroniza o modo 4 bits, sem apagar a tela.
+        No meio da sequência o display só recebe comandos de configuração e de
+        endereço; quem chama reescreve o texto e os desenhos depois."""
+        # Sequência do datasheet para entrar no modo 4 bits, partindo de qualquer estado.
         self.rs.value(0)
         for wait_us in (4500, 150, 150):
             self._nibble(0x3)
@@ -53,9 +61,12 @@ class Lcd1602:
         self._nibble(0x2)               # agora em 4 bits
         time.sleep_us(150)
         self.command(0x28)              # 4 bits, 2 linhas, 5x8
-        self.command(0x0C)              # display ligado, sem cursor
+        self.command(0x0C if self.on else 0x08)   # display ligado (ou não), sem cursor
         self.command(0x06)              # escreve da esquerda para a direita
-        self.command(0x01)              # limpa
+
+    def display(self, on):
+        self.on = on
+        self.command(0x0C if on else 0x08)
 
     # --- alto nível --------------------------------------------------------
 

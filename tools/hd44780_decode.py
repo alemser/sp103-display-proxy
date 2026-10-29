@@ -153,6 +153,8 @@ class Lcd:
         elif b & 0x10:
             if b & 0x08:
                 self.shift += -1 if b & 0x04 else 1
+        elif b & 0x08:
+            pass                              # Display on/off: não muda o texto
         elif b & 0x04:
             self.inc = 1 if b & 0x02 else -1
         elif b & 0x02:
