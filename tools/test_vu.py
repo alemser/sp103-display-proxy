@@ -67,18 +67,19 @@ def frame(l_db, r_db, music=True):
 
 
 def cfg(**kw):
-    c = {"on": True, "floor": -40, "top": 0, "relay": "192.168.178.105"}
+    c = {"on": True, "auto": False, "floor": -40, "top": 0, "relay": "192.168.178.105"}
     c.update(kw)
     return c
 
 
 # --- names.py: a configuração do VU ---------------------------------------
 default = names.validate({})["vu"]
-check(default == {"on": False, "floor": -40, "top": 0, "relay": "192.168.178.105"}, "padrão: VU desligado, -40 dB")
+check(default == {"on": False, "auto": True, "floor": -40, "top": 0, "relay": "192.168.178.105"},
+      "padrão: VU desligado, escala automática")
 check(names.validate({"vu": {"on": True, "floor": -30}})["vu"]["floor"] == -30, "piso configurável")
 check(names.validate({"vu": {"on": True}})["inputs"] == {}, "só 'vu' não vira o formato antigo")
 for bad, what in (({"floor": -70}, "piso fora da faixa"), ({"floor": "x"}, "piso não numérico"),
-                  ({"on": "yes"}, "on não booleano"), ({"relay": "oceano-0001.local"}, "nome em vez de IP"),
+                  ({"on": "yes"}, "on não booleano"), ({"auto": 1}, "auto não booleano"), ({"relay": "oceano-0001.local"}, "nome em vez de IP"),
                   ({"relay": "192.168.1.300"}, "IP inválido")):
     try:
         names.validate({"vu": bad})
@@ -88,16 +89,18 @@ for bad, what in (({"floor": -70}, "piso fora da faixa"), ({"floor": "x"}, "piso
 
 # --- Meter: queda, pico, clip ---------------------------------------------
 m = vu.Meter()
-m.feed(-10, 46, 0)
+m.feed(-10, 46, 0, 40)
 check(m.level == -10 and m.peak == -10, "a barra sobe na hora")
-m.feed(-40, 1000, 1000)
-check(abs(m.level - (-36)) < 1e-6, "cai 26 dB/s (1 s: de -10 a -36)")
-check(m.peak == -10, "o pico fica parado até 1,5 s")
-m.feed(-40, 1000, 2000)
-check(m.peak < -10, "depois de 1,5 s o pico começa a cair")
-m.feed(-0.5, 46, 2046)
+m.feed(-60, 250, 250, 40)
+check(abs(m.level - (-30)) < 1e-6, "escala de 40 dB: cai 80 dB/s (0,25 s: de -10 a -30)")
+m.feed(-60, 250, 500, 40)
+check(abs(m.level - (-50)) < 1e-6, "a barra cheia esvazia em 0,5 s")
+check(m.peak == -10, "o pico fica parado até 1 s")
+m.feed(-60, 500, 1500, 40)
+check(abs(m.peak - (-30)) < 1e-6, "depois de 1 s o pico cai a escala inteira em 1 s")
+m.feed(-0.5, 46, 2046, 40)
 check(m.clip, "acima de -1 dBFS: clip")
-m.feed(-30, 46, 3100)
+m.feed(-30, 46, 3100, 40)
 check(not m.clip, "o clip apaga depois de 1 s")
 
 # --- Vu: linhas ---------------------------------------------------------------
@@ -127,6 +130,36 @@ for bad in ({"top": 5}, {"top": -40}, {"floor": -25, "top": -20}, {"top": True})
     except ValueError:
         check(True, "recusa %r" % bad)
 check(len(vu.GLYPHS) == 64, "8 desenhos de 8 linhas")
+
+# --- Vu: escala automática ---------------------------------------------------
+v = vu.Vu()
+v.configure(cfg(auto=True, floor=-45, top=-20))
+check((v.floor, v.top) == (-60, -40), "automática: começa embaixo e ignora piso e topo fixos")
+ticks = v._ticks
+v.poll(0)
+v.sock.queue.append(frame(-11, -14))
+v.poll(46)
+check(abs(v.top - (-6)) < 1e-6 and abs(v.floor - (-26)) < 1e-6, "um quadro a -11 dB leva o topo a -6 na hora")
+check(v._ticks == ticks and v._px(-11) < 75, "as marcas não mudam e a barra não enche")
+t = 46
+for _ in range(22):                    # 1 s de quadros a -30 dB
+    t += 46
+    v.sock.queue.append(frame(-30, -30))
+    v.poll(t)
+check(-7.2 < v.top < -6.8, "com música mais baixa, o topo desce 1 dB/s (%.2f)" % v.top)
+v.sock.queue.append(frame(-50, -50, music=False))
+v.poll(t + 46)
+check(-7.2 < v.top < -6.8, "sem música, o topo fica parado")
+v.sock.queue.append(frame(-90, -90))
+for _ in range(300):                   # 60 s (cada quadro conta no máximo 200 ms)
+    t += 1000
+    v.sock.queue.append(frame(-90, -90))
+    v.poll(t)
+check(v.top == -40, "o topo não desce abaixo de -40 dB")
+v.sock.queue.append(frame(5, 5))
+v.poll(t + 46)
+check(v.top == 0, "nem sobe acima de 0 dB")
+check(v.status(t + 46)["top"] == 0 and v.status(t + 46)["auto"], "a página vê a escala de agora")
 
 # --- Vu: pedido, quadros, música -----------------------------------------------
 v = vu.Vu()

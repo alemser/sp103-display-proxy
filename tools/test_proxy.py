@@ -179,7 +179,7 @@ def run_vu(proxy, words, end_ms):
     proxy.asyncio = types.SimpleNamespace(sleep_ms=_tick)
     proxy.pub = types.SimpleNamespace(changed=lambda: None)
     proxy.vu_meter.socket = types.SimpleNamespace(socket=FakeRelay, AF_INET=2, SOCK_DGRAM=2)
-    proxy.vu.configure({"on": True, "floor": -40, "top": 0, "relay": "192.168.178.105"})
+    proxy.vu.configure({"on": True, "auto": False, "floor": -40, "top": 0, "relay": "192.168.178.105"})
     t0 = words[0][0]
     FakeSniffer.words = [(int(t - t0) + 1_000_000, w) for t, w in words]   # a tela do amp em 1 s
     Clock.us = 0

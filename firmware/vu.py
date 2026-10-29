@@ -6,14 +6,18 @@ por UDP. O Pico pede a cada 2 s ("SUB1"); cada quadro tem 12 bytes:
     "VU" 0x01 flags  float32 L  float32 R      (RMS 0..1; flags: bit 0 = há música)
 
 Linha 1 = L, linha 2 = R. A coluna 0 mostra a letra; as colunas 1..15 são a barra, com
-5 colunas de pixels cada: 75 passos do piso até o topo (os dois configuráveis, names.py;
-o REC OUT costuma chegar bem abaixo de 0 dBFS). As marcas da escala ficam a -30, -20, -10,
--6 e -3 dB do topo. Os 8
-desenhos próprios (CGRAM) do modo VU estão em GLYPHS; ao sair, o proxy.py grava de volta
-os do controlador.
+5 colunas de pixels cada: 75 passos do piso até o topo. As marcas da escala ficam a -30,
+-20, -10, -6 e -3 dB do topo. Os 8 desenhos próprios (CGRAM) do modo VU estão em GLYPHS;
+ao sair, o proxy.py grava de volta os do controlador.
 
-A barra sobe na hora e cai a 26 dB/s. O pico fica parado 1,5 s e cai a 15 dB/s. Acima de
--1 dBFS (o clip de verdade, não o topo) a última célula acende inteira por 1 s.
+Escala (names.py): o REC OUT chega em níveis bem diferentes conforme a fonte (medido em
+2026-10-29 no Pi 5: DAB perto de -30 dBFS, o vinil perto de -11). Na escala automática,
+o topo fica AUTO_HEADROOM dB acima do quadro mais alto: sobe na hora e, com música, desce
+AUTO_FALL_DB_S; o piso fica AUTO_SPAN dB abaixo do topo. Na manual, piso e topo são fixos.
+
+A barra sobe na hora e a cheia esvazia em FALL_S. O pico fica parado 1 s e cai a escala
+inteira em PEAK_FALL_S. Acima de -1 dBFS (o clip de verdade, não o topo) a última célula
+acende inteira por 1 s.
 """
 
 import math
@@ -25,9 +29,16 @@ PORT = 7091
 SUBSCRIBE = b"SUB1"
 SUBSCRIBE_MS = 2000             # o relay esquece o pedido em 6 s
 STALE_MS = 1000                 # sem quadro por 1 s: volta a tela do amp
-FALL_DB_S = 26
-PEAK_HOLD_MS = 1500
-PEAK_FALL_DB_S = 15
+FALL_S = 0.5                    # a barra cheia esvazia em 0,5 s (proporcional à escala)
+PEAK_HOLD_MS = 1000
+PEAK_FALL_S = 1.0
+# A música varia pouco de um quadro para outro (vinil em 2026-10-29: 90 % dos quadros numa
+# faixa de 7 dB). Com 20 dB, como um VU de ponteiro, e 5 dB de folga, a barra fica entre
+# metade e 3/4 e se mexe; com 30 dB e 3 dB ela ficava parada perto do fim.
+AUTO_SPAN = 20                  # escala automática: do piso ao topo
+AUTO_HEADROOM = 5               # o topo fica 5 dB acima do quadro mais alto
+AUTO_FALL_DB_S = 1              # e desce 1 dB/s com música (de -3 a -27 em 24 s)
+AUTO_TOP = (-40, 0)             # limites do topo automático
 CLIP_DB = -1
 CLIP_MS = 1000
 STEPS = 75                      # 15 células x 5 colunas de pixels
@@ -68,16 +79,16 @@ class Meter:
         self.clip_until = 0
         self.clip = False
 
-    def feed(self, value_db, dt_ms, now):
+    def feed(self, value_db, dt_ms, now, span):
         if value_db >= self.level:
             self.level = value_db
         else:
-            self.level = max(value_db, self.level - FALL_DB_S * dt_ms / 1000)
+            self.level = max(value_db, self.level - span / FALL_S * dt_ms / 1000)
         if self.level >= self.peak:
             self.peak = self.level
             self.hold_until = time.ticks_add(now, PEAK_HOLD_MS)
         elif time.ticks_diff(now, self.hold_until) > 0:
-            self.peak = max(self.level, self.peak - PEAK_FALL_DB_S * dt_ms / 1000)
+            self.peak = max(self.level, self.peak - span / PEAK_FALL_S * dt_ms / 1000)
         if value_db > CLIP_DB:
             self.clip_until = time.ticks_add(now, CLIP_MS)
         self.clip = time.ticks_diff(self.clip_until, now) > 0
@@ -86,6 +97,7 @@ class Meter:
 class Vu:
     def __init__(self):
         self.on = False
+        self.auto = True
         self.floor = -40
         self.top = 0
         self.addr = None
@@ -100,11 +112,19 @@ class Vu:
         self._ticks = ()
 
     def configure(self, cfg):
-        """cfg = names.json "vu": {"on", "floor", "top", "relay"}."""
+        """cfg = names.json "vu": {"on", "auto", "floor", "top", "relay"}."""
         self.on = cfg["on"]
         self.error = None
-        self.floor = cfg["floor"]
-        self.top = cfg["top"]
+        self.auto = cfg["auto"]
+        if self.auto:
+            # O topo começa embaixo: o primeiro quadro com música já o leva ao lugar.
+            self.top = AUTO_TOP[0]
+            self.floor = self.top - AUTO_SPAN
+        else:
+            self.floor = cfg["floor"]
+            self.top = cfg["top"]
+        # As marcas ficam a distâncias fixas do topo: na escala automática, que só se
+        # desloca, as células delas não mudam.
         self._ticks = tuple(c for c in (self._cell(self.top + d) for d in TICKS_DB
                                         if self.top + d > self.floor) if c >= 0)
         addr = (cfg["relay"], PORT)
@@ -150,13 +170,24 @@ class Vu:
             _, _, flags, left, right = struct.unpack("<2sBBff", data)
             dt = 46 if self.last_frame is None else \
                 min(200, max(10, time.ticks_diff(now, self.last_frame)))
-            self.L.feed(db(left), dt, now)
-            self.R.feed(db(right), dt, now)
             self.programme = bool(flags & FLAG_PROGRAMME)
+            l_db, r_db = db(left), db(right)
+            if self.auto and self.programme:
+                self._follow(max(l_db, r_db), dt)
+            span = self.top - self.floor
+            self.L.feed(l_db, dt, now, span)
+            self.R.feed(r_db, dt, now, span)
             self.last_frame = now
             self.frames += 1
             new = True
         return new
+
+    def _follow(self, value_db, dt_ms):
+        """Escala automática: o topo sobe na hora até o quadro + folga e desce devagar."""
+        want = value_db + AUTO_HEADROOM
+        top = want if want > self.top else max(want, self.top - AUTO_FALL_DB_S * dt_ms / 1000)
+        self.top = min(AUTO_TOP[1], max(AUTO_TOP[0], top))
+        self.floor = self.top - AUTO_SPAN
 
     def active(self, now):
         """Ligado, com quadros chegando e música tocando."""
@@ -188,5 +219,6 @@ class Vu:
 
     def status(self, now):
         age = None if self.last_frame is None else time.ticks_diff(now, self.last_frame)
-        return {"on": self.on, "frames": self.frames, "last_frame_ms": age,
+        return {"on": self.on, "auto": self.auto, "floor": round(self.floor), "top": round(self.top),
+                "frames": self.frames, "last_frame_ms": age,
                 "music": self.programme, "showing": self.active(now), "error": self.error}
