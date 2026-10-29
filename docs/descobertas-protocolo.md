@@ -35,7 +35,8 @@ Tela depois do clique:
 - **O Pico final precisa responder às leituras** (RW = 1) do controlador, pelo menos com o busy flag = 0.
   Se não responder, o controlador pode travar esperando.
 - **A opção "cortar só o pino E" é improvável**, porque os dados não ficam livres no repouso.
-  O caminho realista é interceptar os sinais (cortar os pinos 4 a 14) ou desoldar o LCD.
+  O caminho realista é interceptar os sinais (cortar os pinos 4 a 14) ou desoldar o LCD. Foi feito: o LCD foi
+  dessoldado em 2026-10-29 (`proxy-ligacao.md`).
 - **O caractere personalizado 0x00** é definido em algum momento (provavelmente ao ligar).
   A captura de inicialização deve mostrar os comandos `Set CGRAM addr` com o desenho dele.
 
@@ -201,7 +202,8 @@ Os mesmos números negativos (-1,25 → -12,50 dB). Só a **barra** muda de lado
 
 ## Elétrica das portas e leitura do busy flag (2026-10-24)
 
-Medido com o multímetro (amp em standby, iguais com o amp ligado) e com o Pico (`tools/teste_rw_pico.py`).
+Medido com o multímetro (amp em standby, iguais com o amp ligado) e com o Pico, nos testes da escrita sem corte
+(`opcoes-intercepcao.md`; as ferramentas estão no histórico do git).
 
 | Fio | Porta | Repouso | Quando vai a 1 | Medição |
 |---|---|---|---|---|
@@ -216,20 +218,28 @@ Medido com o multímetro (amp em standby, iguais com o amp ligado) e com o Pico 
 - **Busy flag em 1 → ele pergunta de novo.** Com o bit 7 em 1 ("ocupado"), o controlador fez outra leitura e depois
   seguiu normal: não há limite de tempo nem erro visível.
 - **RW sobe ~21 µs antes do E** nas leituras; os pulsos do E duram 10 µs ou mais.
-- **Redesenho atrasado (observação a repetir):** em uma sequência de bancada registrada, depois de cada evento (volume
-  ou troca de entrada), o controlador redesenhou na hora e **de novo, sozinho, 2 a 6 s depois**. No teste 2, o "TAB"
-  ficou na tela por 2 a 4 s e voltou a "DAB" nesse segundo redraw. `opcoes-intercepcao.md` contém uma conclusão antiga
-  incompatível dizendo que só haveria redraw depois de volume; ainda não sabemos se foi outro tipo de troca/estado ou
-  um erro de interpretação. Como `/bus` não registra botões, a tela de 2–6 s pode também ter vindo de um segundo toque.
-  O firmware não provoca um repaint: repetir sem tocar em botões ou volume e registrar `/bus` por pelo menos 10 s antes
-  de tratar o redraw natural como garantido.
+- **Redesenho atrasado (não confirmado):** num registro, depois de cada evento (volume ou troca de entrada), o
+  controlador redesenhou na hora e **de novo, 2 a 6 s depois**. Como o `/bus` não registra botões, a segunda tela pode
+  ter vindo de um segundo toque. Com o proxy isso não importa mais: cada tela é desenhada com os nomes certos.
 - **O LCD ignora o comando 0x00** (teste 2): ele não muda de endereço nem de modo. Trocando de TUNER para DAB com o
   0xC0 zerado, a tela mostrou "TAB".
 - **Na subida do E, RS, RW e os dados já estão no lugar** (comandos e caracteres), e assim ficam até a descida.
 - **Ruído no E com fios longos:** com fios de ~20 cm soldados nas pontas dos pinos, a borda do E "treme" (pulsos falsos de
   até ~1 µs, raros também nas capturas). O sniffer agora só aceita pulsos de 3 µs ou mais.
 
+## Com o Pico como proxy (2026-10-29)
+
+Com o display desligado do controlador, só o Pico responde às leituras do busy flag (`firmware/busy.py`):
+
+- **Ao ligar, o controlador espera o Pico.** O Pico leva alguns milissegundos para carregar o programa de resposta;
+  nesse tempo, o controlador leu "ocupado" ~900 vezes seguidas e depois seguiu normal, sem erro. Confirma que não há
+  limite de tempo.
+- **Depois da primeira resposta "livre", nenhuma leitura deu "ocupado".** O D7 puxado para 0 na subida do E chega a
+  tempo, e a sequência leitura → escrita continua igual à das capturas.
+- **O comando "display on/off" (0x08–0x0F)** era lido como "entry mode" pelo modelo (`hd44780.py`) e pelo decodificador.
+  Corrigido; ele não muda o texto.
+
 ## Status
 
-**Fase de captura concluída (2026-10-23).** Todas as telas do controlador estão registradas acima.
-Próximo passo: a bancada. O Pico 2 W e o display reserva vão reproduzir essas telas fora do amplificador.
+**Fase de captura concluída (2026-10-23).** Todas as telas do controlador estão registradas acima. O Pico reproduz
+essas telas no display do amp, com os nomes personalizados, desde 2026-10-29.

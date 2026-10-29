@@ -1,7 +1,10 @@
 # Bancada: ligação do display reserva (1602 azul) ao Pico 2 W
 
+> Os GP16–21 são os mesmos que hoje desenham no display do amp (`proxy-ligacao.md`). Na bancada, o display reserva
+> ocupa esse lugar, alimentado pelo USB.
+
 Modo de **4 bits**, com o **RW ligado ao GND**: o Pico só escreve e nunca lê. Assim o display nunca manda 5 V de volta
-ao Pico, e os conversores de nível não são necessários. Os pinos GP2–GP12 ficam livres para o sniffer, mais tarde.
+ao Pico, e os conversores de nível não são necessários. Os pinos GP2–GP12 ficam livres para o lado do controlador.
 
 Pino 1 do Pico: o canto ao lado do USB. Os pinos 1–20 ficam numa fileira e os 21–40 na outra
 (o 40 fica de frente para o 1, também ao lado do USB).

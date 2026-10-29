@@ -1,5 +1,9 @@
 # Ligação do analisador lógico ao LCD do SP103
 
+> O mapa de pinos abaixo continua valendo. A ligação do analisador foi usada nas capturas de 2026-10-23; hoje os pinos
+> 4–14 do LCD estão separados do controlador (`docs/proxy-ligacao.md`). Para capturar de novo, ligue o analisador nos
+> fios do lado do controlador (furos 4–14 da placa).
+
 ## Mapa de pinos (medido com multímetro em 2026-10-22, amp fora da tomada)
 
 Pinos do LCD numerados da esquerda para a direita, olhando o display de frente (pino 1 = ponta esquerda).

@@ -1,5 +1,8 @@
 # Roteiro de captura: o que o controlador manda para o display
 
+> **Concluído em 2026-10-23.** Os resultados estão em `docs/descobertas-protocolo.md`. Fica como registro. O display
+> já não está mais ligado ao controlador (`docs/proxy-ligacao.md`).
+
 **Objetivo:** gravar **tudo** o que o controlador do SP103 envia ao LCD (ao ligar, ao trocar de entrada,
 ao mexer no volume, no botão Function…). Com isso montamos o "dicionário" completo de comandos e textos.
 Depois desmontamos tudo, fechamos o amplificador e seguimos para a bancada, com o display reserva.

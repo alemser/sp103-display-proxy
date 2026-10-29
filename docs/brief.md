@@ -1,6 +1,7 @@
 # Brief: texto personalizado no LCD frontal do Acoustic Solutions SP103 (Raspberry Pi Pico 2 W)
 
-Resumo vindo da conversa no Claude (cloud), 2026-10-21. Fica como referência do projeto.
+Resumo vindo da conversa no Claude (cloud), 2026-10-21. Fica como referência do projeto; o estado atual está
+no `README.md` e no "Andamento", no fim.
 
 ## Objetivo
 Mudar o que o LCD frontal original do amplificador SP103 mostra (por exemplo, "PHONO" vira "Turntable", volume personalizado, mensagem de boas-vindas e, mais tarde, o nome da faixa vindo do OceanO). O LCD original, o controlador original e todas as funções do amplificador continuam intactos. Tudo deve ser reversível. O dono é amador, então as explicações devem ser passo a passo.
@@ -41,7 +42,8 @@ Inferido, ainda não confirmado:
 3. Camada de reescrita ("PHONO" → "Turntable") que renderiza no LCD reserva.
 4. Depois: um endpoint Wi-Fi para o OceanO mandar o "now playing" (overlay temporário).
 
-A seção "Arquitetura decidida" (no fim) atualiza esta lista.
+A seção "Arquitetura decidida" (no fim) atualiza esta lista. A instalação que acabou sendo feita está em
+`docs/proxy-ligacao.md`: o display foi dessoldado, em vez de cortar os pinos, e o Pico ficou no meio.
 
 MicroPython com rp2 PIO se o timing permitir, senão o C SDK. Código simples e bem comentado.
 
@@ -142,7 +144,7 @@ Wi-Fi em vez de Bluetooth: o OceanO e o groove-rig já estão na rede, e o naveg
 | 3 | Wi-Fi: `/state`, `/events` e página, com estado de teste | não |
 | 4 | Sniffer real (PIO) no barramento do LCD do amp | sim, só ouvindo |
 | 5 | Consumo opcional de `/state` e `/events` pelo groove-rig | sim |
-| 6 | Instalação final (interceptar o LCD, alimentação, detecção de power) | sim |
+| 6 | Instalação final (interceptar o LCD, alimentação, detecção de power) | sim (feita em 2026-10-29, menos a detecção de power) |
 
 ### Andamento
 
@@ -159,35 +161,21 @@ Wi-Fi em vez de Bluetooth: o OceanO e o groove-rig já estão na rede, e o naveg
 - **Etapa 3 feita (2026-10-23):** Wi-Fi em segundo plano (sem rede, o display segue normal), `/state`, `/events`,
   `/names` e página; nomes das entradas e textos de inicialização personalizáveis pela página (`firmware/names.json`
   no Pico); `main.py` roda tudo sozinho ao ligar.
-- **Interceptação (etapa 6), em análise:** ver `docs/opcoes-intercepcao.md`. Sobrescrever em paralelo é inviável
-  (o controlador segura E e dados com força). O T9311 não tem soquete. A opção menos intrusiva é cortar 11 trilhas no lado
-  das soldas, sem tocar no display. A etapa 4 (só escutar) não precisa de nenhuma intervenção.
+- **Interceptação (etapa 6), análise (2026-10-23):** sobrescrever em paralelo é inviável (o controlador segura E e dados
+  com força) e o T9311 não tem soquete. Opções em `docs/opcoes-intercepcao.md`.
 - **Etapa 4, firmware pronto (2026-10-24):** `firmware/escuta.py` + `sniffer.py` (PIO + DMA circular) + `hd44780.py`.
   Testado com as capturas (`tools/test_sniffer.py`) e no Pico sem o amp (`tools/teste_sniffer_pico.py`); `main.py` agora
   roda a escuta. Sem resistores em série, e o Pico alimentado pelo pino 2 do LCD (5 V presente mesmo em standby) no VSYS.
-  Ligação e testes que faltam: `docs/escuta-ligacao.md`.
 - **Atualização pelo Wi-Fi e página /bus (2026-10-24):** `firmware/ota.py` + `main.py` (volta automática para a versão
   anterior) e `tools/enviar.py`, ver `docs/atualizacao-wifi.md`. `firmware/buslog.py`: estatísticas do barramento e
   download das últimas palavras (hoje 8192) com horário (`tools/ler_bus.py` remonta as telas). Testado na bancada com um
   amp de mentira (`tools/teste_bus_pico.py`), incluindo as voltas automáticas.
-- **Escrita sem corte, testada (2026-10-24):** o RW e o RS são fracos no 1 (o Pico pode puxá-los com segurança), mas o
-  controlador solta só o D7 para ler o busy flag. O Pico só consegue injetar o último byte com bits zerados, não qualquer
-  comando. Trocar nomes livremente exige cortar as trilhas. Ver `docs/opcoes-intercepcao.md`. Fios soldados nas pontas
-  dos pinos do display; o sniffer ganhou um filtro contra o ruído do E.
-- **Escrita sem corte, os quatro truques comprovados no amp (2026-10-24):** o LCD ignora o comando 0x00 (teste 2),
-  uma letra da linha 1 vai para a linha 2 (teste 4: "oAPE"), e um desenho próprio é criado ao ligar e mostrado no lugar
-  de uma letra (teste 3: "rolume"). `tools/planejador.py` diz quais nomes cabem; os escolhidos são REGA, TAPE e Air.
-  Falta o programa final em tempo real. Armadilhas do PIO em `docs/opcoes-intercepcao.md`.
-- **Escrita sem corte, programa final no Pico (2026-10-24):** `firmware/escrita.py` (motor PIO + DMA) e
-  `firmware/plano.py` (planos a partir dos nomes da página; `tools/test_plano.py` simula). REGA, TAPE e Air aparecem
-  depois de girar o volume ou de apertar de novo a entrada. Limites do método: no 1º toque de outra entrada, ao ligar
-  e depois do Function aparece o nome original até o próximo redesenho. Ideias para ir além sem cortar (o dono quer
-  continuar por aqui): `docs/opcoes-intercepcao.md`, "Etapa final sem corte".
-- **Correção de segurança (2026-10-25, branch `codex/no-cut-closed-loop-refresh`):** o planejador agora exige a guarda
-  DAB/DVD completa e, por isso, não encontra um plano seguro para `DAB → Air`; DAB permanece original. A afirmação
-  histórica acima descreve o plano relaxado anterior, não o firmware atual desta branch. Para recuperar Air sem permitir
-  uma escrita híbrida na entrada errada, é necessário identificar DAB antes do redesenho por observação passiva do I²C,
-  do receptor IR ou dos botões. A anotação anterior `ViD` foi um typo; provavelmente o texto pretendido era `Vir`, mas isso
-  não foi confirmado por captura ou log.
+- **Escrita sem corte (2026-10-24 a 10-28), aposentada:** o Pico, em paralelo com o display, só puxava fios para 0 e
+  conseguia mostrar nomes curtos (REGA, TAPE), só a partir do segundo redesenho. Resumo e lições em
+  `docs/opcoes-intercepcao.md`; o código está no histórico do git (até `6be4eb2`).
 - **Instalação dentro do amp (2026-10-24):** o Pico fica dentro, alimentado pelo pino 2 do LCD (fio vermelho no VSYS,
-  pino 39); atualização só pelo Wi-Fi (`tools/enviar.py`). Ver `docs/escuta-ligacao.md`, "Pico dentro do amp".
+  pino 39); atualização só pelo Wi-Fi (`tools/enviar.py`).
+- **Etapa 6 feita: o Pico como proxy (2026-10-29):** display dessoldado nos pinos 4–14 (opção 3b). O Pico lê o
+  controlador, responde "livre" ao busy flag (`firmware/busy.py`) e desenha as telas com os nomes personalizados
+  (`firmware/proxy.py`). Qualquer texto de até 16 caracteres, desde a primeira tela. Testado no amp e com as capturas
+  (`tools/test_proxy.py`). Instalação: `docs/proxy-ligacao.md`.

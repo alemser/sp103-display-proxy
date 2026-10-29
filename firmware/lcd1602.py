@@ -1,6 +1,7 @@
 """Driver simples para LCD 16x2 (HD44780) em modo 4 bits, só escrita (RW no GND).
 
-Ligação na bancada (docs/bancada-ligacao.md): RS=GP16, E=GP17, D4..D7=GP18..GP21.
+Ligação: RS=GP16, E=GP17, D4..D7=GP18..GP21, no display do amp (docs/proxy-ligacao.md)
+ou no reserva da bancada (docs/bancada-ligacao.md).
 Como o RW fica no GND, não dá para ler o busy flag: esperamos o tempo máximo
 de cada comando (datasheet do HD44780).
 """

@@ -176,7 +176,7 @@ class Publisher:
         self.state = state
         self.get_names = get_names
         self.set_names = set_names
-        self.names_extra = names_extra  # campos a mais no GET /names (ex.: o que cabe no display do amp)
+        self.names_extra = names_extra  # campos a mais no GET /names (ex.: as contagens do proxy)
         self.port = port
         self.routes = routes or {}
         self.listeners = []             # conexões abertas em /events
