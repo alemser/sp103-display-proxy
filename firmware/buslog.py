@@ -30,7 +30,7 @@ except ImportError:             # no computador o relógio não dá a volta
     def ticks_diff(a, b):
         return a - b
 
-SIZE = 8192                     # palavras guardadas (umas 50 telas; 48 KB de RAM: o escrita.py também precisa)
+SIZE = 8192                     # palavras guardadas (umas 50 telas; 48 KB de RAM)
 WARN_BATCH = 3000               # o sniffer guarda 4096: um lote perto disso pode ter perdido palavras
 
 

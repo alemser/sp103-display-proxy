@@ -1,6 +1,8 @@
 # Como o Pico pode mudar o texto do display do amp (opções de interceptação)
 
-Análise de 2026-10-23. **Ainda não há decisão**: o dono está pensando.
+Análise de 2026-10-23. **Decidido em 2026-10-29: opção 3b (display dessoldado), com o Pico como proxy**
+(`docs/proxy-ligacao.md`). A escrita sem corte descrita abaixo foi aposentada; o código dela (escrita.py, plano.py,
+refresh.py e as ferramentas de teste) está no histórico do git, até o commit 6be4eb2.
 
 Para **só ler** o estado e publicar no Wi-Fi (etapa 4), nada disso é necessário. O Pico apenas escuta os pinos do display,
 como nas capturas. As pontas dos pinos, que sobram acima da placa do display (ver foto abaixo), aceitam

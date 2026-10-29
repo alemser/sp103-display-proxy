@@ -1,5 +1,7 @@
 # Etapa 4: ligar o Pico no amp para só escutar
 
+> **Histórico.** Desde 2026-10-29 o display está dessoldado e a ligação atual é a do proxy (`docs/proxy-ligacao.md`).
+
 O Pico lê o barramento do LCD do amp e publica o estado em `http://sp103.local/`. Ele **não manda sinal nenhum** para o
 amp: o display do amp funciona igual a sempre, e para desfazer basta puxar os fios. Nada é cortado nem soldado.
 
