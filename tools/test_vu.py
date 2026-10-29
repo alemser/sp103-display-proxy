@@ -67,17 +67,17 @@ def frame(l_db, r_db, music=True):
 
 
 def cfg(**kw):
-    c = {"on": True, "floor": -40, "relay": "192.168.178.105"}
+    c = {"on": True, "floor": -40, "top": 0, "relay": "192.168.178.105"}
     c.update(kw)
     return c
 
 
 # --- names.py: a configuração do VU ---------------------------------------
 default = names.validate({})["vu"]
-check(default == {"on": False, "floor": -40, "relay": "192.168.178.105"}, "padrão: VU desligado, -40 dB")
+check(default == {"on": False, "floor": -40, "top": 0, "relay": "192.168.178.105"}, "padrão: VU desligado, -40 dB")
 check(names.validate({"vu": {"on": True, "floor": -30}})["vu"]["floor"] == -30, "piso configurável")
 check(names.validate({"vu": {"on": True}})["inputs"] == {}, "só 'vu' não vira o formato antigo")
-for bad, what in (({"floor": -60}, "piso fora da faixa"), ({"floor": "x"}, "piso não numérico"),
+for bad, what in (({"floor": -70}, "piso fora da faixa"), ({"floor": "x"}, "piso não numérico"),
                   ({"on": "yes"}, "on não booleano"), ({"relay": "oceano-0001.local"}, "nome em vez de IP"),
                   ({"relay": "192.168.1.300"}, "IP inválido")):
     try:
@@ -115,6 +115,17 @@ check(chr(vu.TICK) in l2 and chr(vu.FULL) not in l2, "canal mudo: só as marcas 
 v.configure(cfg(floor=-20))
 check(v._px(-20) == 0 and v._px(0) == 75, "piso -20: a escala vai de -20 a 0")
 check(all(c >= 0 for c in v._ticks) and len(v._ticks) == 3, "piso -20: só as marcas -10, -6 e -3")
+v.configure(cfg(floor=-45, top=-20))
+check(v._px(-45) == 0 and v._px(-20) == 75 and v._px(-10) == 75, "topo -20: a barra enche em -20 dBFS")
+check(v._ticks == tuple((v._px(-20 + d) - 1) // 5 for d in (-20, -10, -6, -3)), "topo -20: marcas a -20..-3 dB do topo")
+check(names.validate({"vu": {"floor": -45, "top": -20}})["vu"]["top"] == -20, "topo configurável")
+check(names.validate({})["vu"]["top"] == 0, "topo padrão: 0 dBFS")
+for bad in ({"top": 5}, {"top": -40}, {"floor": -25, "top": -20}, {"top": True}):
+    try:
+        names.validate({"vu": bad})
+        check(False, "recusa %r" % bad)
+    except ValueError:
+        check(True, "recusa %r" % bad)
 check(len(vu.GLYPHS) == 64, "8 desenhos de 8 linhas")
 
 # --- Vu: pedido, quadros, música -----------------------------------------------

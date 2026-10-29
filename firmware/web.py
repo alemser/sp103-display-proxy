@@ -5,7 +5,7 @@
     GET /events   Server-Sent Events: um "data: {json}" a cada mudança
     GET /names    os textos personalizados (nomes das entradas e telas de inicialização)
     PUT /names    troca os textos: {"inputs": {"TUNER": "Rega Planar 2"}, "boot": [...], "about": [...],
-                  "vu": {"on": true, "floor": -40, "relay": "192.168.178.105"}}
+                  "vu": {"on": true, "floor": -40, "top": 0, "relay": "192.168.178.105"}}
                   (texto vazio = original; ver names.py)
     outras        rotas extras, por prefixo: routes={"/update": ota.handle, "/bus": log.handle}
 
@@ -138,8 +138,9 @@ function loadNames(){fetch("/names").then(r=>r.json()).then(d=>{const c=d.config
  row(s+" "+(n+1),s+":"+n,d.defaults[s][n],c[s][n])).join("")).join("")+
  '<b>Display</b><span></span><label for="vuon">VU meter</label><label class="chk"><input type="checkbox" '+
  'id="vuon" name="vu:on"'+(c.vu.on?" checked":"")+'> only while music plays</label>'+
- '<label for="vufl">VU floor (dB)</label><input type="number" id="vufl" name="vu:floor" min="-50" max="-10" '+
- 'step="1" value="'+c.vu.floor+'"><label for="vuip">VU source (IP)</label><input id="vuip" name="vu:relay" '+
+ '<label for="vufl">VU floor (dB)</label><input type="number" id="vufl" name="vu:floor" min="-60" max="-10" '+
+ 'step="1" value="'+c.vu.floor+'"><label for="vutp">VU top (dB)</label><input type="number" id="vutp" '+
+ 'name="vu:top" min="-30" max="0" step="1" value="'+c.vu.top+'"><label for="vuip">VU source (IP)</label><input id="vuip" name="vu:relay" '+
  'value="'+q(c.vu.relay)+'"><span class="amp">'+vuText(d.vu)+'</span><button>Save</button>'})}
 function vuText(v){if(v&&v.error)return"VU turned off after an error: "+v.error;if(!v||!v.on)return"VU off";if(v.showing)return"VU on the display now";
  if(v.last_frame_ms===null||v.last_frame_ms>1000)return"no data from the VU source";
@@ -147,7 +148,7 @@ function vuText(v){if(v&&v.error)return"VU turned off after an error: "+v.error;
 loadNames();
 nf.onsubmit=e=>{e.preventDefault();const b={inputs:{},boot:["",""],about:["",""],vu:{}};
  for(const i of nf.querySelectorAll("input")){const [g,k]=i.name.split(":");
-  if(g=="i")b.inputs[k]=i.value;else if(g=="vu")b.vu[k]=k=="on"?i.checked:k=="floor"?Number(i.value):i.value;
+  if(g=="i")b.inputs[k]=i.value;else if(g=="vu")b.vu[k]=k=="on"?i.checked:k=="floor"||k=="top"?Number(i.value):i.value;
   else b[g][+k]=i.value}
  fetch("/names",{method:"PUT",body:JSON.stringify(b)}).then(r=>r.json()).then(d=>{
  nst.textContent=d.error?"Error: "+d.error:"Saved.";if(!d.error)loadNames()})};

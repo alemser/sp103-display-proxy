@@ -5,7 +5,7 @@ Ficam no arquivo names.json do Pico e são editados pela página web (PUT /names
     {"inputs": {"TUNER": "Rega Planar 2", ...},
      "boot":   ["Welcome", "Alessandro"],     # no lugar de "ACOUSTIC" / "SOLUTIONS"
      "about":  ["", ""],                      # no lugar de "Amplifier SP103" / "SW version 1.0"
-     "vu":     {"on": False, "floor": -40, "relay": "192.168.178.105"}}   # VU meter (vu.py)
+     "vu":     {"on": False, "floor": -40, "top": 0, "relay": "192.168.178.105"}}   # VU meter (vu.py)
 
 Texto vazio (ou ausente) = o texto original do amp. As linhas das telas de
 inicialização são centralizadas, como as originais.
@@ -20,8 +20,10 @@ from amp_state import INPUTS
 FILE = "names.json"
 MAX_LEN = 16                    # uma linha do LCD
 SCREENS = ("boot", "about")
-VU_DEFAULT = {"on": False, "floor": -40, "relay": "192.168.178.105"}
-VU_FLOOR = (-50, -10)           # o piso da escala do VU, em dBFS (o topo é 0)
+VU_DEFAULT = {"on": False, "floor": -40, "top": 0, "relay": "192.168.178.105"}
+VU_FLOOR = (-60, -10)           # o piso da escala do VU, em dBFS
+VU_TOP = (-30, 0)               # o topo (barra cheia), em dBFS
+VU_SPAN = 10                    # o topo fica pelo menos 10 dB acima do piso
 
 
 def load():
@@ -87,11 +89,17 @@ def _vu(vu):
     if isinstance(floor, bool) or not isinstance(floor, (int, float)) \
             or not VU_FLOOR[0] <= floor <= VU_FLOOR[1]:
         raise ValueError("the VU floor must be a number from %d to %d dB" % VU_FLOOR)
+    top = out["top"]
+    if isinstance(top, bool) or not isinstance(top, (int, float)) \
+            or not VU_TOP[0] <= top <= VU_TOP[1]:
+        raise ValueError("the VU top must be a number from %d to %d dB" % VU_TOP)
+    if top - floor < VU_SPAN:
+        raise ValueError("the VU top must be at least %d dB above the floor" % VU_SPAN)
     relay = out["relay"]
     parts = relay.split(".") if isinstance(relay, str) else []
     if len(parts) != 4 or not all(p.isdigit() and int(p) < 256 for p in parts):
         raise ValueError("the VU source must be an IP address, like 192.168.178.105")
-    return {"on": out["on"], "floor": int(floor), "relay": relay}
+    return {"on": out["on"], "floor": int(floor), "top": int(top), "relay": relay}
 
 
 def _center(text):

@@ -6,12 +6,14 @@ por UDP. O Pico pede a cada 2 s ("SUB1"); cada quadro tem 12 bytes:
     "VU" 0x01 flags  float32 L  float32 R      (RMS 0..1; flags: bit 0 = há música)
 
 Linha 1 = L, linha 2 = R. A coluna 0 mostra a letra; as colunas 1..15 são a barra, com
-5 colunas de pixels cada: 75 passos do piso (configurável, names.py) até 0 dBFS. Os 8
+5 colunas de pixels cada: 75 passos do piso até o topo (os dois configuráveis, names.py;
+o REC OUT costuma chegar bem abaixo de 0 dBFS). As marcas da escala ficam a -30, -20, -10,
+-6 e -3 dB do topo. Os 8
 desenhos próprios (CGRAM) do modo VU estão em GLYPHS; ao sair, o proxy.py grava de volta
 os do controlador.
 
 A barra sobe na hora e cai a 26 dB/s. O pico fica parado 1,5 s e cai a 15 dB/s. Acima de
--1 dBFS a última célula acende inteira por 1 s (clip).
+-1 dBFS (o clip de verdade, não o topo) a última célula acende inteira por 1 s.
 """
 
 import math
@@ -29,7 +31,7 @@ PEAK_FALL_DB_S = 15
 CLIP_DB = -1
 CLIP_MS = 1000
 STEPS = 75                      # 15 células x 5 colunas de pixels
-TICKS_DB = (-30, -20, -10, -6, -3)
+TICKS_DB = (-30, -20, -10, -6, -3)   # abaixo do topo
 SILENT_DB = -100.0
 FLAG_PROGRAMME = 1
 
@@ -85,6 +87,7 @@ class Vu:
     def __init__(self):
         self.on = False
         self.floor = -40
+        self.top = 0
         self.addr = None
         self.sock = None
         self.last_sub = None
@@ -97,11 +100,13 @@ class Vu:
         self._ticks = ()
 
     def configure(self, cfg):
-        """cfg = names.json "vu": {"on", "floor", "relay"}."""
+        """cfg = names.json "vu": {"on", "floor", "top", "relay"}."""
         self.on = cfg["on"]
         self.error = None
         self.floor = cfg["floor"]
-        self._ticks = tuple(c for c in (self._cell(d) for d in TICKS_DB if d > self.floor) if c >= 0)
+        self.top = cfg["top"]
+        self._ticks = tuple(c for c in (self._cell(self.top + d) for d in TICKS_DB
+                                        if self.top + d > self.floor) if c >= 0)
         addr = (cfg["relay"], PORT)
         if addr != self.addr or not self.on:
             self.close()
@@ -115,7 +120,7 @@ class Vu:
         self.last_frame = None
 
     def _px(self, value_db):
-        x = round((value_db - self.floor) * STEPS / -self.floor)
+        x = round((value_db - self.floor) * STEPS / (self.top - self.floor))
         return 0 if x < 0 else STEPS if x > STEPS else x
 
     def _cell(self, value_db):

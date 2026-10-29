@@ -34,14 +34,14 @@ Flags: bit 0 = há música; bit 1 = o arquivo do gate foi lido. Sem o arquivo do
 
 1. **VU desligado** na página: tudo como antes. O Pico nem pede os quadros.
 2. **VU ligado, com música e quadros chegando**: L na linha 1, R na linha 2. Coluna 0 = a letra; colunas 1 a 15 = a barra,
-   5 colunas de pixels cada: 75 passos do piso até 0 dBFS.
+   5 colunas de pixels cada: 75 passos do piso até o topo (configuráveis).
 3. **O controlador desenhou uma tela** (volume, entrada, menu, ligar): a tela do amp aparece na hora e fica 3 s depois do
    último redesenho.
 4. **Sem música, sem quadros por 1 s, ou o display do amp desligado**: tela do amp.
 
 A barra sobe na hora e cai a 26 dB/s. O pico fica parado 1,5 s e cai a 15 dB/s. Acima de −1 dBFS, a última célula acende
-inteira por 1 s (clip). Pontinhos no fundo da barra vazia marcam −30, −20, −10, −6 e −3 dB (só os que estão acima do
-piso).
+inteira por 1 s (clip). Pontinhos no fundo da barra vazia marcam −30, −20, −10, −6 e −3 dB abaixo do topo (só os que estão acima
+do piso). O clip é sempre o de verdade (−1 dBFS), mesmo com o topo abaixo de 0.
 
 Os 8 desenhos próprios do display (`vu.GLYPHS`): 1 a 4 colunas, célula cheia, marca de pico, marca da escala e clip. No
 modo VU eles tomam o lugar das barras do amp; ao voltar para a tela do amp, o Pico grava de volta os do controlador.
@@ -51,11 +51,17 @@ modo VU eles tomam o lugar das barras do amp; ao voltar para a tela do amp, o Pi
 | Campo | Padrão | Faixa |
 |---|---|---|
 | VU meter | desligado | — |
-| VU floor (dB) | −40 | −50 a −10 (o topo é sempre 0 dBFS) |
+| VU floor (dB) | −40 | −60 a −10: a barra vazia |
+| VU top (dB) | 0 | −30 a 0: a barra cheia; pelo menos 10 dB acima do piso |
 | VU source (IP) | 192.168.178.105 (oceano-0001) | um IP; o MicroPython não resolve nomes `.local` |
 
-Fica no `names.json` do Pico, junto com os nomes (`"vu": {"on", "floor", "relay"}`). A linha embaixo dos campos diz o
+Fica no `names.json` do Pico, junto com os nomes (`"vu": {"on", "floor", "top", "relay"}`). A linha embaixo dos campos diz o
 que o VU está fazendo: "VU on the display now", "waiting for music", "no data from the VU source"...
+
+**Acertar a escala:** o REC OUT chega bem abaixo de 0 dBFS (depende do ganho da captura no groove-detector, que não
+deve ser mexido por causa do VU). Medido em 2026-10-29 com música: no oceano-0000 (Pi 5, ganho 25 %) a média ficou em
+−30 dBFS e os picos em −25; no oceano-0001, −40 e −35. Para o Pi 5: piso −45, topo −20. Regra prática: topo uns 5 dB
+acima dos picos, piso uns 15 dB abaixo da média.
 
 Se o VU der um erro no Pico, ele se desliga sozinho e o display continua com a tela do amp; a página mostra o erro.
 Diagnóstico em `http://sp103.local/names`, campo `vu` (quadros recebidos, idade do último, música).
