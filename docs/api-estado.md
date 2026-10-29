@@ -56,4 +56,6 @@ ser ligado: um cliente que precisa saber deve tratar `null` como "não sei", nun
 - Prefira o `/events`: cada mudança chega na hora (uns 10 ms depois de o controlador terminar a tela, mais o Wi-Fi).
 - Se o Pico sumir (sem `ping` por uns 5 s), considere o estado desconhecido e reconecte com espera crescente.
 - O Pico atende poucas conexões ao mesmo tempo: um `/events` por cliente, não um por tela.
-- O `.local` funciona em clientes com mDNS (Go, iOS, macOS). O IP é fixo pelo roteador.
+- O `sp103.local` funciona no iOS e no macOS. O groove-rig (Go sem cgo) **não** resolve nomes `.local`: use o IP,
+  que é fixo pelo roteador (`http://192.168.178.108/events`).
+- No groove-rig, este é o "state provider" do perfil SP103: o contrato genérico está no `docs/state-provider.md` de lá.
