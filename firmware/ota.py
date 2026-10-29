@@ -6,8 +6,11 @@ a atualização fica desligada).
 
     GET  /update            estado: versão, arquivos (sha256), arquivos recebidos
     PUT  /update/<nome>.py  recebe um arquivo em new/ (confere a sintaxe)     [senha]
+    DELETE /update/<nome>.py  marca o arquivo para apagar no próximo apply   [senha]
     POST /update/cancel     apaga o que foi recebido e não aplicado            [senha]
     POST /update/apply      guarda a versão atual em old/, aplica new/, reinicia [senha]
+
+Apagar também passa pelo old/: se a versão nova falhar, o main.py traz o arquivo de volta.
     POST /update/rollback   volta para a versão de old/ e reinicia             [senha]
 
 Depois do apply, a versão nova fica "em teste" (update.json, state "trial"). O
@@ -29,6 +32,7 @@ MARKER = "update.json"          # os mesmos nomes do main.py
 OLD = "old"
 NEW = "new"
 LOCKED = ("main.py", "secrets.py")   # só pelo cabo: o porteiro e as senhas
+DELETE = ".del"                 # new/<nome>.py.del = apagar <nome>.py no apply
 
 
 def _marker():
@@ -122,7 +126,7 @@ def status():
     files = _files()
     return {"version": version(files), "state": m.get("state", "ok"), "why": m.get("why"),
             "previous": version(_files(OLD)) if _ls(OLD) else None, "files": files,
-            "staged": _ls(NEW), "enabled": hasattr(secrets, "UPDATE_PASSWORD")}
+            "staged": _ls(NEW), "enabled": hasattr(secrets, "UPDATE_PASSWORD"), "can_delete": True}
 
 
 def _valid_name(name):
@@ -170,6 +174,17 @@ async def _stage(req, name):
     return _sha(path)
 
 
+def _stage_delete(name):
+    """Marca um arquivo do programa para apagar no próximo apply."""
+    if not _valid_name(name):
+        raise ValueError("%s cannot be deleted over Wi-Fi" % name)
+    if name not in _program():
+        raise ValueError("%s is not on the Pico" % name)
+    if NEW not in os.listdir():
+        os.mkdir(NEW)
+    open(_path(NEW, name + DELETE), "wb").close()
+
+
 def _apply():
     staged = _ls(NEW)
     if not staged:
@@ -183,11 +198,15 @@ def _apply():
             _copy(name, _path(OLD, name))
     # 2. Marca "em teste" ANTES de trocar: se faltar luz no meio, o main.py volta.
     _save({"state": "trial", "boots": 0, "files": staged})
-    # 3. Troca os arquivos.
+    # 3. Troca (ou apaga) os arquivos.
     for name in staged:
-        if name in os.listdir():
-            os.remove(name)
-        os.rename(_path(NEW, name), name)
+        target = name[:-len(DELETE)] if name.endswith(DELETE) else name
+        if target in os.listdir():
+            os.remove(target)
+        if target == name:
+            os.rename(_path(NEW, name), name)
+        else:
+            os.remove(_path(NEW, name))
     m = _marker()
     m["version"] = version(_files())
     _save(m)
@@ -216,6 +235,9 @@ async def handle(req, writer):
     try:
         if req.method == "PUT":
             answer = {"file": action, "sha256": await _stage(req, action)}
+        elif req.method == "DELETE":
+            _stage_delete(action)
+            answer = {"file": action, "delete": True}
         elif req.method == "POST" and action == "cancel":
             _clear(NEW)
             answer = {"staged": []}

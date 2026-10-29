@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Envia o programa novo para o Pico pelo Wi-Fi (firmware/ota.py) e acompanha até ele confirmar.
 
-    python3 tools/enviar.py                    # envia o que mudou em firmware/ e aplica
+    python3 tools/enviar.py                    # envia o que mudou em firmware/, apaga do Pico
+                                               # os .py que não existem mais e aplica
     python3 tools/enviar.py escuta.py web.py   # só esses arquivos (se mudaram)
     python3 tools/enviar.py --estado           # só mostra a versão e o estado do Pico
     python3 tools/enviar.py --voltar           # volta para a versão anterior (guardada no Pico)
@@ -220,11 +221,18 @@ def main():
                 print("Aviso: o main.py do Pico é diferente do firmware/main.py. Ele não vai pelo "
                       "Wi-Fi;\n       se precisar, pelo cabo: .venv/bin/mpremote cp firmware/main.py :main.py")
     send = {n: d for n, d in files.items() if args.forcar or sha(d) != st["files"].get(n)}
-    if not send:
+    # Só com o firmware/ inteiro dá para saber o que sobrou no Pico.
+    remove = [] if args.files else sorted(n for n in st["files"] if n not in LOCKED and n not in files)
+    if remove and not st.get("can_delete"):
+        print("No Pico sobraram %s, mas o ota.py dele ainda não sabe apagar.\n"
+              "Envie esta versão e rode de novo para apagar." % ", ".join(remove))
+        remove = []
+    if not send and not remove:
         print("Nada mudou: o Pico já tem esses arquivos.")
         return
 
-    print("\nEnviando %d arquivo(s):" % len(send))
+    if send:
+        print("\nEnviando %d arquivo(s):" % len(send))
     request(host, "POST", "/update/cancel", b"", pw)
     for name, data in send.items():
         try:
@@ -243,12 +251,17 @@ def main():
             if got["sha256"] != sha(data):
                 sys.exit("%s chegou diferente; nada foi aplicado. Tente de novo." % name)
             print("  %-20s %6d bytes  ok" % (name, len(data)))
+    if remove:
+        print("\nApagando do Pico %d arquivo(s) que não existem mais em firmware/:" % len(remove))
+        for name in remove:
+            request(host, "DELETE", "/update/" + name, None, pw)
+            print("  %-20s marcado" % name)
 
-    expected = dict(st["files"])
-    expected.update({n: sha(d) for n, d in send.items()})
-    expected = version(expected)
     expected_files = dict(st["files"])
     expected_files.update({n: sha(d) for n, d in send.items()})
+    for name in remove:
+        del expected_files[name]
+    expected = version(expected_files)
     try:
         request(host, "POST", "/update/apply", b"", pw)
     except (http.client.RemoteDisconnected, ConnectionError, OSError, urllib.error.URLError):
