@@ -4,7 +4,8 @@
     GET /state    o estado em JSON
     GET /events   Server-Sent Events: um "data: {json}" a cada mudança
     GET /names    os textos personalizados (nomes das entradas e telas de inicialização)
-    PUT /names    troca os textos: {"inputs": {"TUNER": "Rega Planar 2"}, "boot": [...], "about": [...]}
+    PUT /names    troca os textos: {"inputs": {"TUNER": "Rega Planar 2"}, "boot": [...], "about": [...],
+                  "vu": {"on": true, "floor": -40, "relay": "192.168.178.105"}}
                   (texto vazio = original; ver names.py)
     outras        rotas extras, por prefixo: routes={"/update": ota.handle, "/bus": log.handle}
 
@@ -102,6 +103,7 @@ h3,form{max-width:640px;margin:22px auto 8px}form{display:grid;grid-template-col
 .amp{grid-column:2;color:var(--dim);font-size:12px;margin-top:-4px}
 input{font:16px ui-monospace,Menlo,monospace;padding:6px 8px;border-radius:6px;border:1px solid var(--dim);
  background:var(--card);color:var(--fg)}button{grid-column:2;padding:8px;font-size:16px;border-radius:6px}
+.chk{display:flex;gap:8px;align-items:center}.chk input{width:18px;height:18px}
 </style></head><body>
 <div class="lcd" id="lcd">                \n                </div>
 <div class="grid" id="g"></div>
@@ -133,11 +135,20 @@ function loadNames(){fetch("/names").then(r=>r.json()).then(d=>{const c=d.config
  nf.innerHTML='<b>Inputs</b><span></span>'+d.inputs.map(k=>row(k,"i:"+k,k,c.inputs[k])+
  (amp[k]?'<span class="amp">'+amp[k]+'</span>':'')).join("")+
  '<b>Startup</b><span></span>'+["boot","about"].map(s=>[0,1].map(n=>
- row(s+" "+(n+1),s+":"+n,d.defaults[s][n],c[s][n])).join("")).join("")+'<button>Save</button>'})}
+ row(s+" "+(n+1),s+":"+n,d.defaults[s][n],c[s][n])).join("")).join("")+
+ '<b>Display</b><span></span><label for="vuon">VU meter</label><label class="chk"><input type="checkbox" '+
+ 'id="vuon" name="vu:on"'+(c.vu.on?" checked":"")+'> only while music plays</label>'+
+ '<label for="vufl">VU floor (dB)</label><input type="number" id="vufl" name="vu:floor" min="-50" max="-10" '+
+ 'step="1" value="'+c.vu.floor+'"><label for="vuip">VU source (IP)</label><input id="vuip" name="vu:relay" '+
+ 'value="'+q(c.vu.relay)+'"><span class="amp">'+vuText(d.vu)+'</span><button>Save</button>'})}
+function vuText(v){if(v&&v.error)return"VU turned off after an error: "+v.error;if(!v||!v.on)return"VU off";if(v.showing)return"VU on the display now";
+ if(v.last_frame_ms===null||v.last_frame_ms>1000)return"no data from the VU source";
+ return v.music?"amp screen for a moment":"waiting for music"}
 loadNames();
-nf.onsubmit=e=>{e.preventDefault();const b={inputs:{},boot:["",""],about:["",""]};
+nf.onsubmit=e=>{e.preventDefault();const b={inputs:{},boot:["",""],about:["",""],vu:{}};
  for(const i of nf.querySelectorAll("input")){const [g,k]=i.name.split(":");
-  if(g=="i")b.inputs[k]=i.value;else b[g][+k]=i.value}
+  if(g=="i")b.inputs[k]=i.value;else if(g=="vu")b.vu[k]=k=="on"?i.checked:k=="floor"?Number(i.value):i.value;
+  else b[g][+k]=i.value}
  fetch("/names",{method:"PUT",body:JSON.stringify(b)}).then(r=>r.json()).then(d=>{
  nst.textContent=d.error?"Error: "+d.error:"Saved.";if(!d.error)loadNames()})};
 </script></body></html>

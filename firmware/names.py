@@ -4,10 +4,13 @@ Ficam no arquivo names.json do Pico e são editados pela página web (PUT /names
 
     {"inputs": {"TUNER": "Rega Planar 2", ...},
      "boot":   ["Welcome", "Alessandro"],     # no lugar de "ACOUSTIC" / "SOLUTIONS"
-     "about":  ["", ""]}                      # no lugar de "Amplifier SP103" / "SW version 1.0"
+     "about":  ["", ""],                      # no lugar de "Amplifier SP103" / "SW version 1.0"
+     "vu":     {"on": False, "floor": -40, "relay": "192.168.178.105"}}   # VU meter (vu.py)
 
 Texto vazio (ou ausente) = o texto original do amp. As linhas das telas de
 inicialização são centralizadas, como as originais.
+
+O "relay" é o IP da placa com o sp103-vu-relay: o MicroPython não resolve nomes .local.
 """
 
 import json
@@ -17,6 +20,8 @@ from amp_state import INPUTS
 FILE = "names.json"
 MAX_LEN = 16                    # uma linha do LCD
 SCREENS = ("boot", "about")
+VU_DEFAULT = {"on": False, "floor": -40, "relay": "192.168.178.105"}
+VU_FLOOR = (-50, -10)           # o piso da escala do VU, em dBFS (o topo é 0)
 
 
 def load():
@@ -50,7 +55,7 @@ def validate(cfg):
     """Confere a configuração. Devolve uma cópia completa e limpa, ou levanta ValueError."""
     if not isinstance(cfg, dict):
         raise ValueError("the configuration must be a JSON object")
-    if cfg and "inputs" not in cfg and not any(k in cfg for k in SCREENS):
+    if cfg and "inputs" not in cfg and "vu" not in cfg and not any(k in cfg for k in SCREENS):
         cfg = {"inputs": cfg}   # formato antigo: só a tabela de entradas
     inputs = cfg.get("inputs") or {}
     if not isinstance(inputs, dict):
@@ -67,7 +72,26 @@ def validate(cfg):
         if not isinstance(lines, list) or len(lines) != 2:
             raise ValueError("'%s' must be a list with 2 lines" % screen)
         clean[screen] = [_text(v, screen + " line") for v in lines]
+    clean["vu"] = _vu(cfg.get("vu") or {})
     return clean
+
+
+def _vu(vu):
+    if not isinstance(vu, dict):
+        raise ValueError("'vu' must be a JSON object")
+    out = dict(VU_DEFAULT)
+    out.update(vu)
+    if not isinstance(out["on"], bool):
+        raise ValueError("vu 'on' must be true or false")
+    floor = out["floor"]
+    if isinstance(floor, bool) or not isinstance(floor, (int, float)) \
+            or not VU_FLOOR[0] <= floor <= VU_FLOOR[1]:
+        raise ValueError("the VU floor must be a number from %d to %d dB" % VU_FLOOR)
+    relay = out["relay"]
+    parts = relay.split(".") if isinstance(relay, str) else []
+    if len(parts) != 4 or not all(p.isdigit() and int(p) < 256 for p in parts):
+        raise ValueError("the VU source must be an IP address, like 192.168.178.105")
+    return {"on": out["on"], "floor": int(floor), "relay": relay}
 
 
 def _center(text):

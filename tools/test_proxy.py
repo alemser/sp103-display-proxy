@@ -13,6 +13,7 @@
 import asyncio
 import glob
 import os
+import struct
 import sys
 import time as real_time
 import types
@@ -64,6 +65,7 @@ def fake_time():
     t.ticks_us = lambda: Clock.us
     t.ticks_ms = lambda: Clock.us // 1000
     t.ticks_diff = lambda a, b: a - b
+    t.ticks_add = lambda a, b: a + b
     t.sleep_us = t.sleep_ms = lambda n: None
     return t
 
@@ -147,6 +149,84 @@ def run_capture(proxy, words):
     return shown[1:] if shown and shown[0] == (" " * 16,) * 2 else shown
 
 
+class FakeRelay:
+    """O socket UDP do vu.py: o relay entrega um quadro a cada 46 ms, de start a stop (ms)."""
+    start, stop, music = 0, 0, True
+
+    def __init__(self, *a):
+        self.next = FakeRelay.start
+
+    def setblocking(self, flag):
+        pass
+
+    def sendto(self, data, addr):
+        pass
+
+    def recv(self, n):
+        now = Clock.us // 1000
+        if self.next > now or self.next >= FakeRelay.stop:
+            raise OSError(11)
+        self.next += 46
+        return struct.pack("<2sBBff", b"VU", 1, 3 if FakeRelay.music else 2, 0.1, 0.05)
+
+    def close(self):
+        pass
+
+
+def run_vu(proxy, words, end_ms):
+    """Roda o listen() com o VU ligado; devolve [(ms, "vu" ou a tela do amp)] a cada troca."""
+    proxy.asyncio = types.SimpleNamespace(sleep_ms=_tick)
+    proxy.pub = types.SimpleNamespace(changed=lambda: None)
+    proxy.vu_meter.socket = types.SimpleNamespace(socket=FakeRelay, AF_INET=2, SOCK_DGRAM=2)
+    proxy.vu.configure({"on": True, "floor": -40, "relay": "192.168.178.105"})
+    t0 = words[0][0]
+    FakeSniffer.words = [(int(t - t0) + 1_000_000, w) for t, w in words]   # a tela do amp em 1 s
+    Clock.us = 0
+    changes, loop = [], proxy.listen()
+    while Clock.us < end_ms * 1000:
+        ms = loop.send(None)
+        Clock.us += ms * 1000
+        lines = proxy.lcd.lines
+        kind = "vu" if lines[0][0] == "L" and lines[1][0] == "R" and proxy.vu_mode else tuple(lines)
+        if not changes or changes[-1][1] != kind:
+            changes.append((Clock.us // 1000, kind))
+    return changes
+
+
+def check_vu(path):
+    """VU no ar; a tela do amp chega em 1 s e fica 3 s; os quadros param em 6 s."""
+    fails = 0
+    proxy = load_proxy()
+    FakeRelay.start, FakeRelay.stop, FakeRelay.music = 0, 6000, True
+    changes = run_vu(proxy, words_from_lac(path), 8000)
+    kinds = [k if k == "vu" else "amp" for _, k in changes if k != (" " * 16,) * 2]
+    at = {"vu": [], "amp": []}
+    for t, k in changes:
+        if k != (" " * 16,) * 2:
+            at[k if k == "vu" else "amp"].append(t)
+    amp = next((k for _, k in changes if k not in ("vu", (" " * 16,) * 2)), None)
+
+    def ok(cond, what):
+        nonlocal fails
+        fails += not cond
+        print("%-5s %s" % ("ok" if cond else "FALHA", what))
+
+    ok(kinds[:4] == ["vu", "amp", "vu", "amp"], "VU, tela do amp, VU, tela do amp: %s" % kinds)
+    ok(amp == ("Volume -28.75 dB", "Rega Planar 2   "), "a tela do amp já com o nome: %r" % (amp,))
+    if len(changes) >= 4:
+        t_amp, t_vu, t_end = at["amp"][0], at["vu"][1], at["amp"][1]
+        ok(1000 <= t_amp <= 1020, "a tela do amp entra quando o controlador desenha (%d ms)" % t_amp)
+        ok(3000 <= t_vu - t_amp <= 3060, "e fica 3 s (%d ms)" % (t_vu - t_amp))
+        ok(6900 <= t_end <= 7100, "sem quadros por 1 s, volta a tela do amp (%d ms)" % t_end)
+    ok(bytes(proxy.lcd.cgram) == bytes(proxy.bus.lcd.cgram), "os desenhos do controlador voltam")
+
+    proxy = load_proxy()
+    FakeRelay.start, FakeRelay.stop, FakeRelay.music = 0, 6000, False
+    changes = run_vu(proxy, words_from_lac(path), 3000)
+    ok(all(k != "vu" for _, k in changes), "sem música, o VU não aparece")
+    return fails
+
+
 def main():
     paths = sorted(glob.glob(os.path.join(HERE, "..", "captures", "*.lac")))
     fails = 0
@@ -192,6 +272,9 @@ def main():
                 if g != w:
                     print("      tela %d: mostrou %r, esperado %r" % (i, g, w))
                     break
+
+    print("\n3. VU: alterna com a tela do amp (05-tuner.lac)")
+    fails += check_vu(os.path.join(HERE, "..", "captures", "05-tuner.lac"))
     print("\ntudo certo" if not fails else "\n%d falha(s)" % fails)
     sys.exit(1 if fails else 0)
 

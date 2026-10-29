@@ -9,6 +9,9 @@ Cada tela completa do controlador é reconstruída (hd44780.py), vai para o leit
 (amp_state) e é desenhada no display do amp já com os textos personalizados
 (names.rewrite). Os desenhos próprios (CGRAM) e o "display on/off" seguem os do controlador.
 
+Com o VU ligado na página (vu.py), as duas linhas viram as barras L e R enquanto houver
+música; cada redesenho do controlador traz a tela do amp de volta por 3 s.
+
 Publica o estado em http://sp103.local/ (ou pelo IP), com /bus e atualização pelo Wi-Fi,
 como a escuta. Sem Wi-Fi, o display continua funcionando.
 
@@ -29,6 +32,7 @@ import asyncio
 import names
 import ota
 import sp103_screens as s
+import vu as vu_meter
 from amp_state import AmpState
 from buslog import BusLog
 from hd44780 import Bus, RW
@@ -39,6 +43,7 @@ from web import Publisher, wifi_task
 # (ele redesenha as duas linhas em cerca de 8,5 ms, com uma escrita a cada ~115 µs).
 QUIET_US = 2000
 REFRESH_MS = 30_000                     # redesenha tudo de vez em quando (ruído nos fios)
+AMP_HOLD_MS = 3000                      # com o VU ligado, a tela do amp fica 3 s depois de cada redesenho
 CLOCK_EVERY_S = 6 * 3600                # acerta o relógio pela internet a cada 6 h
 D7 = 1 << 10                            # o D7 na palavra do sniffer (hd44780.py)
 
@@ -59,12 +64,17 @@ shown = [None, None]                    # o que está no display do amp agora
 shown_cgram = None
 shown_on = None
 last_full = time.ticks_ms()
+vu = vu_meter.Vu()
+vu.configure(texts["vu"])
+vu_mode = False                         # o display mostra o VU (e os desenhos dele)
+amp_until = time.ticks_ms()             # até aqui, a tela do amp tem a vez
 
 
 def draw(full=False):
     """Põe no display do amp a tela do controlador, com os textos personalizados.
     Só manda o que mudou; full=True resincroniza e reescreve tudo (sem apagar a tela)."""
-    global shown_cgram, shown_on, last_full
+    global shown_cgram, shown_on, last_full, vu_mode
+    vu_mode = False
     m = bus.lcd
     if full:
         lcd.resync()
@@ -85,6 +95,25 @@ def draw(full=False):
         shown_on = m.display_on
 
 
+def show_vu(full=False):
+    """Põe o VU no display. Os desenhos do VU tomam o lugar dos do controlador;
+    o draw() seguinte grava os do controlador de volta (o shown_cgram muda)."""
+    global shown_cgram, last_full, vu_mode
+    vu_mode = True
+    if full:
+        lcd.resync()
+        shown[0] = shown[1] = shown_cgram = None
+        last_full = time.ticks_ms()
+    if shown_cgram != vu_meter.GLYPHS:
+        for code in range(8):
+            lcd.define_char(code, vu_meter.GLYPHS[8 * code:8 * code + 8])
+        shown_cgram = vu_meter.GLYPHS
+    for row, text in enumerate(vu.lines()):
+        if text != shown[row]:
+            lcd.write_line(row, text)
+            shown[row] = text
+
+
 def set_texts(cfg):
     """Chamado pelo PUT /names: valida, guarda na flash e aplica na hora."""
     global texts
@@ -92,15 +121,17 @@ def set_texts(cfg):
     names.save(texts)
     if state.set_names(texts["inputs"], time.ticks_ms()):
         pub.changed()
+    vu.configure(texts["vu"])
     draw()
 
 
 def status():
-    return {"proxy": {"reads": bus.reads, "writes": bus.writes, "busy_high": busy_high}}
+    return {"proxy": {"reads": bus.reads, "writes": bus.writes, "busy_high": busy_high},
+            "vu": vu.status(time.ticks_ms())}
 
 
 async def listen():
-    global listen_ticks, busy_high, answered
+    global listen_ticks, busy_high, answered, amp_until
     quiet_since = time.ticks_us()
     clears = 0
     while True:
@@ -128,12 +159,32 @@ async def listen():
         quiet = time.ticks_diff(now, quiet_since) > QUIET_US
         if not n and bus.pending and quiet:
             screen = bus.take()
+            amp_until = time.ticks_add(ms, AMP_HOLD_MS)
             draw()
             if state.update(screen[0], screen[1], time.ticks_ms()):
                 print("amp: %r | %r" % screen)
                 pub.changed()
             log.screen(ms, state.screen != "unknown")
         elif not n and quiet and time.ticks_diff(ms, last_full) > REFRESH_MS:
+            if vu_mode:
+                show_vu(full=True)
+            else:
+                draw(full=True)
+        # VU: só com música, quadros chegando, o display ligado e a tela do amp fora da vez.
+        # Um erro no VU o desliga e mantém o display do amp: com o VU salvo ligado, um erro
+        # que derrubasse o programa faria o Pico reiniciar sem parar.
+        try:
+            new_frame = vu.poll(ms)
+            want_vu = vu.active(ms) and time.ticks_diff(ms, amp_until) >= 0 and bus.lcd.display_on
+            if want_vu and not bus.pending and (new_frame or not vu_mode):
+                show_vu()
+            elif vu_mode and not want_vu:
+                draw()
+        except Exception as e:
+            print("vu: turned off after an error:", repr(e))
+            vu.error = repr(e)
+            vu.on = False
+            vu.close()
             draw(full=True)
         await asyncio.sleep_ms(1)
 

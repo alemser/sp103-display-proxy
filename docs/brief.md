@@ -179,3 +179,5 @@ Wi-Fi em vez de Bluetooth: o OceanO e o groove-rig já estão na rede, e o naveg
   controlador, responde "livre" ao busy flag (`firmware/busy.py`) e desenha as telas com os nomes personalizados
   (`firmware/proxy.py`). Qualquer texto de até 16 caracteres, desde a primeira tela. Testado no amp e com as capturas
   (`tools/test_proxy.py`). Instalação: `docs/proxy-ligacao.md`.
+- **VU meter (2026-10-29):** opcional, pela página. Os dados vêm do groove-detector por uma ponte nova no Orange Pi
+  (`relay/`, UDP), sem mudar o detector. Ver `docs/vu.md`.

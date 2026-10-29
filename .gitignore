@@ -17,3 +17,6 @@ docs/img/petervis/
 
 # Nome e senha do Wi-Fi: só no computador e no Pico, nunca no GitHub
 firmware/secrets.py
+
+# Binários da ponte do VU
+relay/bin/
