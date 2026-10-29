@@ -187,7 +187,10 @@ Falta ver o outro lado: de que lado a barra fica, e se o número muda de sinal o
 ## Controle remoto e desligar (observado pelo dono, 2026-10-23)
 
 - O controle remoto faz exatamente o mesmo que os botões do painel, com as mesmas telas.
-- Ao desligar, o amp **não escreve nada** no display.
+- Ao desligar, o display fica **em branco**. Correção de 2026-10-29, pelo registro do barramento do Pico: o
+  controlador escreve espaços nas 32 posições (DDRAM 0x00–0x0F e 0x40–0x4F, sem "Clear display") e para. Por isso
+  parecia que ele não escrevia nada. Ao ligar, a tela também fica em branco por uns 70 ms, mas sempre depois de um
+  "Clear display" (`03-liga.lac`): é assim que o Pico separa as duas (`amp_state.py`, `power: "standby"`).
 
 ## Balance para o outro lado: `15-balance-b.lac` (burst, 2026-10-23)
 

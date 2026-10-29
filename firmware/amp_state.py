@@ -14,6 +14,11 @@ IMPORTANTE: só chame update() com a tela COMPLETA. O controlador redesenha
 caractere por caractere (cerca de 8,5 ms por tela), e no meio do caminho a
 linha pode misturar o valor velho com o novo ("Volume -27.75" no lugar de
 "-27.50"). O sniffer deve esperar alguns milissegundos sem escritas antes de chamar.
+
+Standby: ao ir para o standby, o controlador escreve espaços nas 32 posições (visto em
+2026-10-29), e o "power" vira "standby". Ao ligar, a tela também fica em branco, mas com um
+"Clear display" antes: por isso o update() recebe cleared=True nesse caso, e a tela em branco
+não conta como standby. power = None: ainda não se sabe (o Pico acabou de ligar).
 """
 
 BOX = "\x00"                    # caractere personalizado 0: caixa das barras
@@ -191,7 +196,7 @@ class AmpState:
 
     def __init__(self, names=None):
         self.names = names or {}    # tabela de nomes (names.py): {"TUNER": "Rega Planar 2"}
-        self.power = None           # "on" quando alguma tela é reconhecida
+        self.power = None           # "on" (tela reconhecida), "standby" (tela em branco) ou None
         self.volume_db = None
         self.input = None           # nome original no amp: "TUNER"
         self.input_id = None        # identificador estável da entrada: "tuner"
@@ -207,9 +212,13 @@ class AmpState:
         self.updated_at = None      # milissegundos (relógio de quem chama)
         self.version = 0            # aumenta a cada mudança (útil para /events)
 
-    def update(self, line1, line2, now_ms=None):
-        """Lê uma tela completa. Devolve True se algum campo mudou."""
+    def update(self, line1, line2, now_ms=None, cleared=False):
+        """Lê uma tela completa. Devolve True se algum campo mudou.
+
+        cleared: houve um "Clear display" desde a tela anterior (o amp está ligando)."""
         screen, values = parse(line1, line2)
+        if not cleared and not (line1 + line2).strip(" "):
+            screen = "standby"
         changed = False
         lcd = [lcd_text(line1), lcd_text(line2)]
         if lcd != self.lcd:
@@ -218,8 +227,9 @@ class AmpState:
         if screen != self.screen:
             self.screen = screen
             changed = True
-        if screen != "unknown" and self.power != "on":
-            self.power = "on"
+        power = "standby" if screen == "standby" else "on" if screen != "unknown" else self.power
+        if power != self.power:
+            self.power = power
             changed = True
         for key in values:
             if getattr(self, key) != values[key]:

@@ -134,7 +134,8 @@ def run_capture(proxy, words):
     """Roda o listen() do proxy sobre as palavras; devolve as telas que o display mostrou."""
     import names
     proxy.asyncio = types.SimpleNamespace(sleep_ms=_tick)
-    proxy.pub = types.SimpleNamespace(changed=lambda: None)
+    proxy.powers = []                   # o "power" a cada mudança do estado
+    proxy.pub = types.SimpleNamespace(changed=lambda: proxy.powers.append(proxy.state.power))
     t0 = words[0][0] if words else 0
     FakeSniffer.words = [(int(t - t0) + 1000, w) for t, w in words]
     Clock.us = 0
@@ -263,10 +264,12 @@ def main():
         # O busy_high aqui vem do display de verdade das capturas (ocupado logo depois do
         # "Clear display"); só no amp, com o Responder, ele precisa ficar em 0.
         ok = got == want and (not got or bytes(proxy.lcd.cgram) == bytes(proxy.bus.lcd.cgram))
+        # Nenhuma captura tem o standby: a tela em branco do ligar não pode virar "standby".
+        ok = ok and "standby" not in proxy.powers
         fails += not ok
         last = " | ".join(got[-1]) if got else "(nada)"
-        print("%-5s %-24s %3d telas, busy_high=%d  ->  %s"
-              % ("ok" if ok else "FALHA", name, len(got), proxy.busy_high, last))
+        print("%-5s %-24s %3d telas, busy_high=%d, power=%s  ->  %s"
+              % ("ok" if ok else "FALHA", name, len(got), proxy.busy_high, proxy.state.power, last))
         if not ok and got != want:
             for i, (g, w) in enumerate(zip(got + [None] * len(want), want + [None] * len(got))):
                 if g != w:

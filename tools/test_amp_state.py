@@ -56,6 +56,31 @@ def self_test():
         bad += not ok
         print(("ok   " if ok else "FALHA"), repr(l1), repr(l2), "->", got)
     print(f"\n{len(CASES) - bad} de {len(CASES)} ok")
+    bad += not standby_test()
+    return bad == 0
+
+
+def standby_test():
+    """Tela em branco = standby; a tela em branco do ligar (com "Clear display") não conta."""
+    blank, vol = " " * 16, ("Volume -20.00 dB", "DAB" + " " * 13)
+    st, steps = AmpState(), []
+    steps.append((st.update(blank, blank, 0, cleared=True), st.power, None, "ligando: branco com clear"))
+    st.update("    ACOUSTIC    ", "   SOLUTIONS    ", 1)
+    steps.append((True, st.power, "on", "tela de início: ligado"))
+    st.update(*vol, 2)
+    steps.append((st.update(blank, blank, 3), st.power, "standby", "branco sem clear: standby"))
+    steps.append((True, st.screen, "standby", "a tela se chama standby"))
+    steps.append((True, st.volume_db, -20.0, "o último volume fica guardado"))
+    steps.append((not st.update(blank, blank, 4), st.power, "standby", "branco de novo: nada muda"))
+    st.update(blank, blank, 5, cleared=True)
+    steps.append((True, st.power, "standby", "ligando de novo: ainda não é 'on'..."))
+    st.update(*vol, 6)
+    steps.append((True, st.power, "on", "...até a primeira tela"))
+    bad = 0
+    for changed, got, want, what in steps:
+        ok = changed and got == want
+        bad += not ok
+        print(("ok   " if ok else "FALHA"), what, "->", got)
     return bad == 0
 
 

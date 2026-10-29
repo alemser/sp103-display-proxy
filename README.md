@@ -40,6 +40,7 @@ controlador T9311 ──(GP2–GP12, 8 bits)──► Pico 2 W ──(GP16–21,
 | Documento | Conteúdo |
 |---|---|
 | [`docs/proxy-ligacao.md`](docs/proxy-ligacao.md) | **A instalação atual**: ligação, alimentação, regras de segurança, diagnóstico |
+| [`docs/api-estado.md`](docs/api-estado.md) | O contrato do `/state` e do `/events` (ligado/standby, volume, tom, entrada), para o groove-rig |
 | [`docs/vu.md`](docs/vu.md) | O VU meter: a ponte no Orange Pi, o protocolo, o que o display mostra, a configuração |
 | [`docs/atualizacao-wifi.md`](docs/atualizacao-wifi.md) | Atualizar o Pico pelo Wi-Fi, com volta automática |
 | [`docs/descobertas-protocolo.md`](docs/descobertas-protocolo.md) | Como o controlador fala com o display: comandos, telas e parte elétrica |

@@ -134,6 +134,7 @@ async def listen():
     global listen_ticks, busy_high, answered, amp_until
     quiet_since = time.ticks_us()
     clears = 0
+    clears_seen = 0                     # o bus.clears na tela anterior
     while True:
         n = 0
         ms = time.ticks_ms()
@@ -161,7 +162,8 @@ async def listen():
             screen = bus.take()
             amp_until = time.ticks_add(ms, AMP_HOLD_MS)
             draw()
-            if state.update(screen[0], screen[1], time.ticks_ms()):
+            cleared, clears_seen = bus.clears != clears_seen, bus.clears
+            if state.update(screen[0], screen[1], time.ticks_ms(), cleared):
                 print("amp: %r | %r" % screen)
                 pub.changed()
             log.screen(ms, state.screen != "unknown")
