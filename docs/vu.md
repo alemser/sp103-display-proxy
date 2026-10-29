@@ -63,6 +63,12 @@ deve ser mexido por causa do VU). Medido em 2026-10-29 com música: no oceano-00
 −30 dBFS e os picos em −25; no oceano-0001, −40 e −35. Para o Pi 5: piso −45, topo −20. Regra prática: topo uns 5 dB
 acima dos picos, piso uns 15 dB abaixo da média.
 
+**L e R iguais:** a placa de captura do oceano-0000 (GeneralPlus USB Audio Device) é mono: só a entrada de microfone,
+1 canal (`/proc/asound/card0/stream0`: `Channels: 1`, `MONO`). O detector repete o mesmo valor nos dois canais, e o R
+do REC OUT provavelmente nem é medido. Com uma captura estéreo de linha (plano: HiFiBerry DAC+ ADC), o VU mostra os
+dois canais sem mudar nada no Pico nem na ponte; só é preciso recalibrar o ganho no groove-detector e acertar o piso e
+o topo de novo.
+
 Se o VU der um erro no Pico, ele se desliga sozinho e o display continua com a tela do amp; a página mostra o erro.
 Diagnóstico em `http://sp103.local/names`, campo `vu` (quadros recebidos, idade do último, música).
 
