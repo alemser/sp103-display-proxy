@@ -26,14 +26,15 @@ _DRIVE_MASK = 0x3 << 4
 @rp2.asm_pio(set_init=rp2.PIO.IN_LOW)
 def _answer():
     # jmp_pin = RW; set_base = D7. Na subida do E, RS e RW já estão no lugar (capturas).
+    # O E vai como número (2 = E_PIN): aqui dentro o asm_pio esconde as variáveis do arquivo.
     label("top")
-    wait(1, gpio, E_PIN)        # E sobe
+    wait(1, gpio, 2)            # E sobe
     jmp(pin, "read")            # RW = 1: é uma leitura
-    wait(0, gpio, E_PIN)        # escrita: só espera o pulso acabar
+    wait(0, gpio, 2)            # escrita: só espera o pulso acabar
     jmp("top")
     label("read")
     set(pindirs, 1)             # D7 em 0 = "livre"
-    wait(0, gpio, E_PIN)        # E desce: o controlador já leu
+    wait(0, gpio, 2)            # E desce: o controlador já leu
     set(pindirs, 0)             # solta o D7 (o pull-up do amp o leva de volta a 1)
 
 
