@@ -54,6 +54,7 @@ pub = None
 wifi_ok = False
 listen_ticks = 0                        # voltas da escuta: mostra que ela não travou
 busy_high = 0                           # leituras em que o controlador viu "ocupado"
+answered = False                        # já houve uma leitura com "livre" (o Responder no ar)
 shown = [None, None]                    # o que está no display do amp agora
 shown_cgram = None
 shown_on = None
@@ -99,15 +100,20 @@ def status():
 
 
 async def listen():
-    global listen_ticks, busy_high
+    global listen_ticks, busy_high, answered
     quiet_since = time.ticks_us()
     clears = 0
     while True:
         n = 0
         ms = time.ticks_ms()
         for word in sniffer.read():
-            if word & (RW | D7) == RW | D7:
-                busy_high += 1          # o Responder falhou nesta leitura (deve ficar em 0)
+            if word & RW:
+                # Antes do primeiro "livre", o "ocupado" é só o Pico ainda ligando (o sniffer
+                # começa uns ms antes do Responder). Depois, é falha do Responder: deve ficar em 0.
+                if not word & D7:
+                    answered = True
+                elif answered:
+                    busy_high += 1
             bus.feed(word)
             log.add(ms, word)
             n += 1
