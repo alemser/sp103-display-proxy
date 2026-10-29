@@ -16,8 +16,8 @@ linha pode misturar o valor velho com o novo ("Volume -27.75" no lugar de
 "-27.50"). O sniffer deve esperar alguns milissegundos sem escritas antes de chamar.
 
 Standby: ao ir para o standby, o controlador escreve espaços nas 32 posições (visto em
-2026-10-29), e o "power" vira "standby". Ao ligar, a tela também fica em branco, mas com um
-"Clear display" antes: por isso o update() recebe cleared=True nesse caso, e a tela em branco
+2026-10-29), e o "power" vira "standby"; ao sair dele, desenha direto a tela normal. Ao
+receber energia da tomada, a tela também fica em branco, mas com um "Clear display" antes: por isso o update() recebe cleared=True nesse caso, e a tela em branco
 não conta como standby. power = None: ainda não se sabe (o Pico acabou de ligar).
 """
 

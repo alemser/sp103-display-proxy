@@ -44,8 +44,9 @@ o Pico reiniciar, o bass fica `null` até alguém mexer nele.
 ## Standby
 
 Ao ir para o standby, o controlador escreve espaços nas duas linhas e para; o `power` vira `"standby"` e a `screen`
-também. Ao ligar, ele apaga a tela com "Clear display" e mostra "ACOUSTIC SOLUTIONS": o `power` vira `"on"` nessa
-tela. Os outros campos guardam o último valor durante o standby (o amp volta com o mesmo volume e a mesma entrada).
+também. Ao sair do standby, ele desenha direto a tela normal (volume e entrada), e o `power` vira `"on"`. Só quando o
+amp recebe energia da tomada ele apaga a tela ("Clear display") e mostra "ACOUSTIC SOLUTIONS". Confirmado no amp em
+2026-10-29: standby → `"standby"` em 0,1 s; ligar → `"on"`. Os outros campos guardam o último valor durante o standby (o amp volta com o mesmo volume e a mesma entrada).
 
 O Pico é alimentado pelo amp também em standby. Se ele reiniciar com o amp em standby, o `power` fica `null` até o amp
 ser ligado: um cliente que precisa saber deve tratar `null` como "não sei", nunca como desligado.
