@@ -252,7 +252,9 @@ class Request:
 
 
 async def reply(writer, status, ctype, body):
-    writer.write(("HTTP/1.1 %s\r\nContent-Type: %s\r\nContent-Length: %d\r\n"
+    # no-store: tudo aqui muda com o estado e com as atualizações por OTA; sem ele, o
+    # Safari reaproveitava a página antiga depois de uma atualização.
+    writer.write(("HTTP/1.1 %s\r\nContent-Type: %s\r\nContent-Length: %d\r\nCache-Control: no-store\r\n"
                   "Access-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n"
                   % (status, ctype, len(body))).encode())
     writer.write(body)
