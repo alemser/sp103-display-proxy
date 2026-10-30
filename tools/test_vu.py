@@ -130,12 +130,12 @@ for bad in ({"top": 5}, {"top": -40}, {"floor": -25, "top": -20}, {"top": True})
         check(False, "recusa %r" % bad)
     except ValueError:
         check(True, "recusa %r" % bad)
-check(all(len(g) == 64 for g in (vu.GLYPHS, vu.DECK_GLYPHS, vu.SCALE_GLYPHS)), "8 desenhos de 8 linhas")
+check(all(len(g) == 64 for g in (vu.GLYPHS, vu.DECK_GLYPHS, vu.SCALE_GLYPHS, vu.KX_GLYPHS)), "8 desenhos de 8 linhas")
 check(names.VU_LAYOUTS == vu.LAYOUTS, "names.py e vu.py conhecem os mesmos layouts")
 check(names.validate({})["vu"]["layout"] == "bars", "layout padrão: barras finas")
 check(names.validate({"vu": {"layout": "deck"}})["vu"]["layout"] == "deck", "layout configurável")
 try:
-    names.validate({"vu": {"layout": "kx393"}})
+    names.validate({"vu": {"layout": "needle"}})
     check(False, "recusa um layout que não existe")
 except ValueError:
     check(True, "recusa um layout que não existe")
@@ -171,6 +171,28 @@ check(bar[13] == chr(3 * 2 - 1) and bar[8:13] == " " * 5, "escala: o pico do L s
 check(ruler.endswith(" 0") and "30" in ruler, "escala manual de 40 dB: a régua até 30 abaixo do topo (%r)" % ruler)
 v.R.clip = True
 check(v.lines()[1][15] == vu.BLOCK, "escala: no clip, o 0 vira um bloco cheio")
+
+# --- Vu: KX-393 ------------------------------------------------------------------
+v = vu.Vu()
+v.configure(cfg(layout="kx393"))      # manual: topo 0, então o 0 do deck fica em -10 dBFS
+check(v.glyphs is vu.KX_GLYPHS, "KX-393: os desenhos do deck")
+check(len(vu.KX_DB) == len(vu.KX_RULER) == 16, "KX-393: 16 segmentos e a régua com 16 casas")
+check(all(vu.KX_RULER[i] != " " for i in (0, 3, 6, 9, 11, 13, 15)),
+      "KX-393: cada número da régua começa embaixo do seu segmento")
+bar, ruler = v.lines()
+check(bar == " " * 16 and ruler == vu.KX_RULER, "KX-393: sem som, só a régua")
+v.L.level, v.L.peak = -10, -4         # L até o 0 do deck (12 segmentos); o pico no +6
+v.R.level = v.R.peak = -19            # R até o -10 do deck (7 segmentos)
+bar, _ = v.lines()
+check(bar[:7] == chr(2) * 7, "KX-393: L e R juntos nos 7 primeiros")
+check(bar[7:12] == chr(0) * 5, "KX-393: depois só o L, até o 0")
+check(bar[12:14] == "  " and bar[14] == chr(3) and bar[15] == " ", "KX-393: o pico do L sozinho no +6, alto")
+v.R.clip = True
+check(v.lines()[0][15] == chr(4), "KX-393: o clip do R acende o último segmento, alto")
+g = vu.KX_GLYPHS
+check(g[0:8] == bytes([0, 0x1E, 0x1E, 0, 0, 0, 0, 0]) and g[8:16] == bytes([0, 0, 0, 0, 0, 0x1E, 0x1E, 0]),
+      "KX-393: L em cima, R embaixo, com uma linha de vão")
+check(g[40:48] == bytes([0x1E] * 3 + [0, 0] + [0x1E] * 3), "KX-393: os quentes são mais altos")
 
 # --- Vu: escala automática ---------------------------------------------------
 v = vu.Vu()

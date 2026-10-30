@@ -189,7 +189,7 @@ def run_vu(proxy, words, end_ms):
         ms = loop.send(None)
         Clock.us += ms * 1000
         lines = proxy.lcd.lines
-        kind = "vu" if lines[0][0] == "L" and lines[1][0] == "R" and proxy.vu_mode else tuple(lines)
+        kind = "vu" if lines[0][0] == "L" and lines[1][0] == "R" and proxy.own == "vu" else tuple(lines)
         if not changes or changes[-1][1] != kind:
             changes.append((Clock.us // 1000, kind))
     return changes
@@ -226,6 +226,104 @@ def check_vu(path):
     FakeRelay.start, FakeRelay.stop, FakeRelay.music = 0, 6000, False
     changes = run_vu(proxy, words_from_lac(path), 3000)
     ok(all(k != "vu" for _, k in changes), "sem música, o VU não aparece")
+    return fails
+
+
+class FakeSource:
+    """O socket UDP do info.py: a fonte manda um pacote "NP" a cada 5 s, tocando Time (A4)
+    desde 2:41 no instante 0, como o sp103-vu-relay (os tempos valem no envio)."""
+    def __init__(self, *a):
+        self.next = 0
+        self.sent = []
+
+    def setblocking(self, flag):
+        pass
+
+    def sendto(self, data, addr):
+        self.sent.append(data)
+
+    def recv(self, n):
+        now = Clock.us // 1000
+        if self.next > now:
+            raise OSError(11)
+        self.next += 5000
+        s = now // 1000
+        fields = ["Pink Floyd", "Time", "A4", str(161 + s), "421", "A", "4", "5", str(544 - s), "312", "62"]
+        return b"NP\x01\x01" + "\x1f".join(fields).encode()
+
+    def close(self):
+        pass
+
+
+def run_info(proxy, words, end_ms, info_cfg):
+    """Roda o listen() com as telas ligadas (e o VU salvo ligado); devolve as telas a cada troca."""
+    import names
+    proxy.asyncio = types.SimpleNamespace(sleep_ms=_tick)
+    proxy.pub = types.SimpleNamespace(changed=lambda: None)
+    proxy.vu_meter.socket = types.SimpleNamespace(socket=FakeRelay, AF_INET=2, SOCK_DGRAM=2)
+    proxy.info_feed.socket = types.SimpleNamespace(socket=FakeSource, AF_INET=2, SOCK_DGRAM=2)
+    FakeRelay.start, FakeRelay.stop, FakeRelay.music = 0, end_ms, True
+    cfg = names.validate(dict(NAMES, vu={"on": True, "relay": "192.168.178.99"}, info=info_cfg))
+    proxy.configure_feeds(cfg)
+    proxy.amp_until = 0
+    t0 = words[0][0]
+    FakeSniffer.words = [(int(t - t0) + 1_000_000, w) for t, w in words]   # a tela do amp em 1 s
+    Clock.us = 0
+    changes, loop = [], proxy.listen()
+    while Clock.us < end_ms * 1000:
+        ms = loop.send(None)
+        Clock.us += ms * 1000
+        kind = proxy.own or tuple(proxy.lcd.lines)
+        if not changes or changes[-1][1] != kind:
+            changes.append((Clock.us // 1000, kind, tuple(proxy.lcd.lines)))
+    return changes
+
+
+def check_info(path):
+    """Telas de informação: modo fixo e temporário, com a tela do amp no meio."""
+    fails = 0
+
+    def ok(cond, what):
+        nonlocal fails
+        fails += not cond
+        print("%-5s %s" % ("ok" if cond else "FALHA", what))
+
+    proxy = load_proxy()
+    changes = run_info(proxy, words_from_lac(path), 6000, {"on": True, "mode": "fixed", "fixed": "pos"})
+    kinds = [k if isinstance(k, str) else "amp" for _, k, _ in changes if k != (" " * 16,) * 2]
+    ok(kinds[:3] == ["pos", "amp", "pos"], "fixo: a tela escolhida, a tela do amp, a escolhida: %s" % kinds)
+    ok(changes[0][1] == "pos" and changes[0][0] < 50, "fixo: aparece logo no primeiro pacote (%d ms)" % changes[0][0])
+    ok(not proxy.vu.on, "fixo: o VU nem pede quadros")
+    first = next(l for _, k, l in changes if k == "pos")
+    ok(first == ("A4 Time         ", "2:41/7:01  -4:20"), "fixo: faixa e posição %r" % (first,))
+    ok(proxy.lcd.lines[1] == "2:46/7:01  -4:15", "o Pico conta os segundos entre os pacotes: %r" % proxy.lcd.lines[1])
+    ok(bytes(proxy.lcd.cgram[:64]) == proxy.screens_mod.GLYPHS, "as telas usam os desenhos de barra do VU")
+
+    proxy = load_proxy()
+    changes = run_info(proxy, words_from_lac(path), 30000, {"on": True, "mode": "temp", "secs": 5})
+    kinds = []
+    for _, k, _ in changes:
+        k = k if isinstance(k, str) else "amp"
+        if k != "amp" or not kinds or kinds[-1] != "amp":
+            kinds.append(k)
+    ok(kinds[:2] == ["track", "amp"] and kinds[2:6] == ["track", "pos", "side", "stylus"] and kinds[6] == "vu",
+       "temporário: as telas em sequência, depois o VU: %s" % kinds)
+    at = {k: t for t, k, _ in reversed(changes) if isinstance(k, str)}
+    spans = [at["side"] - at["pos"], at["stylus"] - at["side"], at["vu"] - at["stylus"]]
+    ok(all(4990 <= d <= 5110 for d in spans), "cada tela fica 5 s: %s ms" % spans)
+    side = next(l for _, k, l in changes if k == "side")
+    ok(side[0] == "Side A track 4/5", "a tela do lado: %r" % (side,))
+    stylus = next(l for _, k, l in changes if k == "stylus")
+    ok(stylus[0] == "Stylus     312 h" and stylus[1].endswith(" 62%"), "a tela da agulha: %r" % (stylus,))
+
+    proxy = load_proxy()
+    run_info(proxy, words_from_lac(path), 1500, {"on": True, "mode": "fixed"})
+    proxy.state.power = "standby"
+    loop = proxy.listen()
+    for _ in range(3000):
+        Clock.us += loop.send(None) * 1000
+    clock = proxy.lcd.lines
+    ok(proxy.own == "clock" and clock[0].strip().count(":") == 1, "standby: o relógio %r" % (clock,))
     return fails
 
 
@@ -279,6 +377,8 @@ def main():
 
     print("\n3. VU: alterna com a tela do amp (05-tuner.lac)")
     fails += check_vu(os.path.join(HERE, "..", "captures", "05-tuner.lac"))
+    print("\n4. Telas de informação (05-tuner.lac)")
+    fails += check_info(os.path.join(HERE, "..", "captures", "05-tuner.lac"))
     print("\ntudo certo" if not fails else "\n%d falha(s)" % fails)
     sys.exit(1 if fails else 0)
 

@@ -1,4 +1,5 @@
-// Command sp103-vu-relay repassa o VU do groove-detector ao Pico do SP103, por UDP.
+// Command sp103-vu-relay repassa o VU do groove-detector ao Pico do SP103, por UDP, e
+// também o que está tocando, para as telas de informação (nowplaying.go).
 //
 // O groove-detector publica o VU num socket Unix (16 bytes por quadro, ~21,5 por
 // segundo: float32 L, float32 R, uint64 sample_index; ver o docs/contracts.md dele) e
@@ -8,9 +9,11 @@
 //
 // Protocolo (porta UDP 7091):
 //
-//	Pico  → ponte  "SUB1"                       pedido; vale 6 s, o Pico repete a cada 2 s
+//	Pico  → ponte  "SUB1"                       pedido só do VU; vale 6 s, o Pico repete a cada 2 s
+//	Pico  → ponte  "SUB2" máscara               bit 0 = VU, bit 1 = telas (docs/api-telas.md)
 //	ponte → Pico   "VU" 0x01 flags L R          12 bytes; L e R float32 little-endian (RMS 0..1)
 //	               flags: bit 0 = há música, bit 1 = o gate foi lido
+//	ponte → Pico   "NP" 0x01 flags campos...    as telas: ver docs/api-telas.md
 //
 // Sem pedido válido, a ponte não envia nada.
 package main
@@ -36,9 +39,23 @@ const (
 
 	flagProgramme = 1 << 0
 	flagGateKnown = 1 << 1
+
+	maskVU   = 1 << 0
+	maskInfo = 1 << 1
 )
 
 var subscribeMsg = []byte("SUB1")
+
+// parseSubscribe lê um pedido: "SUB1" (só o VU) ou "SUB2" + máscara. 0 = não é pedido.
+func parseSubscribe(p []byte) byte {
+	switch {
+	case len(p) == 4 && string(p) == "SUB1":
+		return maskVU
+	case len(p) == 5 && string(p[:4]) == "SUB2":
+		return p[4] & (maskVU | maskInfo)
+	}
+	return 0
+}
 
 type relay struct {
 	mu   sync.Mutex
@@ -50,6 +67,7 @@ type relay struct {
 
 type subscriber struct {
 	addr  *net.UDPAddr
+	mask  byte
 	until time.Time
 }
 
@@ -58,7 +76,7 @@ func newRelay() *relay {
 }
 
 // subscribe renova o pedido de addr. Devolve false se já há maxSubs pedidos ativos.
-func (r *relay) subscribe(addr *net.UDPAddr, now time.Time) bool {
+func (r *relay) subscribe(addr *net.UDPAddr, mask byte, now time.Time) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	key := addr.String()
@@ -67,20 +85,22 @@ func (r *relay) subscribe(addr *net.UDPAddr, now time.Time) bool {
 		if len(r.subs) >= maxSubs {
 			return false
 		}
-		log.Printf("subscriber %s", key)
+		log.Printf("subscriber %s (mask %d)", key, mask)
 	}
-	r.subs[key] = subscriber{addr: addr, until: now.Add(leaseTTL)}
+	r.subs[key] = subscriber{addr: addr, mask: mask, until: now.Add(leaseTTL)}
 	return true
 }
 
-// targets devolve os pedidos ainda válidos.
-func (r *relay) targets(now time.Time) []*net.UDPAddr {
+// targets devolve os pedidos ainda válidos que querem o que a máscara diz.
+func (r *relay) targets(now time.Time, mask byte) []*net.UDPAddr {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.expire(now)
 	out := make([]*net.UDPAddr, 0, len(r.subs))
 	for _, s := range r.subs {
-		out = append(out, s.addr)
+		if s.mask&mask != 0 {
+			out = append(out, s.addr)
+		}
 	}
 	return out
 }
@@ -161,8 +181,8 @@ func (r *relay) serveSubscriptions(conn *net.UDPConn) {
 			time.Sleep(time.Second)
 			continue
 		}
-		if n == len(subscribeMsg) && string(buf[:n]) == string(subscribeMsg) {
-			if !r.subscribe(addr, time.Now()) {
+		if mask := parseSubscribe(buf[:n]); mask != 0 {
+			if !r.subscribe(addr, mask, time.Now()) {
 				log.Printf("subscriber %s refused: %d already", addr, maxSubs)
 			}
 		}
@@ -183,7 +203,7 @@ func (r *relay) pumpVU(sockPath string, conn *net.UDPConn) {
 			if _, err = io.ReadFull(c, frame); err != nil {
 				break
 			}
-			targets := r.targets(time.Now())
+			targets := r.targets(time.Now(), maskVU)
 			if len(targets) == 0 {
 				continue
 			}
@@ -202,6 +222,8 @@ func main() {
 	listen := flag.String("listen", ":7091", "endereço UDP para os pedidos do Pico")
 	vuSock := flag.String("vu", "/tmp/groove-vu.sock", "socket do VU do groove-detector")
 	gate := flag.String("gate", "/tmp/groove-gate.json", "arquivo do gate do groove-detector")
+	identity := flag.String("identity", "http://127.0.0.1:7071", "groove-identity (o que está tocando)")
+	catalog := flag.String("catalog", "http://127.0.0.1:7073", "groove-catalog (faixas do disco e agulha)")
 	flag.Parse()
 
 	addr, err := net.ResolveUDPAddr("udp", *listen)
@@ -212,10 +234,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("sp103-vu-relay on udp %s, vu %s, gate %s", *listen, *vuSock, *gate)
+	log.Printf("sp103-vu-relay on udp %s, vu %s, gate %s, identity %s, catalog %s",
+		*listen, *vuSock, *gate, *identity, *catalog)
 
 	r := newRelay()
 	go r.watchGate(*gate, 500*time.Millisecond)
 	go r.serveSubscriptions(conn)
+	go r.pumpInfo(newNowPlaying(*identity, *catalog), conn)
 	r.pumpVU(*vuSock, conn)
 }

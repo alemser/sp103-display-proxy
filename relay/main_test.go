@@ -32,21 +32,21 @@ func TestSubscribeLeaseAndLimit(t *testing.T) {
 	r := newRelay()
 	now := time.Unix(1000, 0)
 	for i := 0; i < maxSubs; i++ {
-		if !r.subscribe(&net.UDPAddr{IP: net.IPv4(192, 168, 1, byte(10+i)), Port: 5000}, now) {
+		if !r.subscribe(&net.UDPAddr{IP: net.IPv4(192, 168, 1, byte(10+i)), Port: 5000}, maskVU, now) {
 			t.Fatalf("subscriber %d refused", i)
 		}
 	}
 	extra := &net.UDPAddr{IP: net.IPv4(192, 168, 1, 99), Port: 5000}
-	if r.subscribe(extra, now) {
+	if r.subscribe(extra, maskVU, now) {
 		t.Fatal("accepted more than maxSubs")
 	}
-	if n := len(r.targets(now.Add(leaseTTL - time.Second))); n != maxSubs {
+	if n := len(r.targets(now.Add(leaseTTL-time.Second), maskVU)); n != maxSubs {
 		t.Fatalf("targets before expiry = %d", n)
 	}
-	if n := len(r.targets(now.Add(leaseTTL + time.Second))); n != 0 {
+	if n := len(r.targets(now.Add(leaseTTL+time.Second), maskVU)); n != 0 {
 		t.Fatalf("targets after expiry = %d", n)
 	}
-	if !r.subscribe(extra, now.Add(leaseTTL+time.Second)) {
+	if !r.subscribe(extra, maskVU, now.Add(leaseTTL+time.Second)) {
 		t.Fatal("refused after the others expired")
 	}
 }
@@ -55,9 +55,9 @@ func TestRenewKeepsSubscriber(t *testing.T) {
 	r := newRelay()
 	a := &net.UDPAddr{IP: net.IPv4(192, 168, 1, 108), Port: 5000}
 	now := time.Unix(1000, 0)
-	r.subscribe(a, now)
-	r.subscribe(a, now.Add(4*time.Second))
-	if n := len(r.targets(now.Add(8 * time.Second))); n != 1 {
+	r.subscribe(a, maskVU, now)
+	r.subscribe(a, maskVU, now.Add(4*time.Second))
+	if n := len(r.targets(now.Add(8*time.Second), maskVU)); n != 1 {
 		t.Fatalf("renewed subscriber expired: %d", n)
 	}
 }
@@ -118,7 +118,7 @@ func TestEndToEnd(t *testing.T) {
 	}
 	defer detector.Close()
 	deadline := time.Now().Add(2 * time.Second)
-	for len(r.targets(time.Now())) == 0 && time.Now().Before(deadline) {
+	for len(r.targets(time.Now(), maskVU)) == 0 && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	detector.Write(frame(0.1, 0.2, 0))

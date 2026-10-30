@@ -1,4 +1,4 @@
-"""VU meter no display do amp: os canais L e R, com a marca de pico, em três layouts.
+"""VU meter no display do amp: os canais L e R, com a marca de pico, em quatro layouts.
 
 Os quadros vêm do sp103-vu-relay (relay/main.go), que repassa o VU do groove-detector
 por UDP. O Pico pede a cada 2 s ("SUB1"); cada quadro tem 12 bytes:
@@ -18,6 +18,11 @@ Vu.glyphs, e ao sair o proxy.py grava de volta os do controlador:
   R na de baixo; 2 segmentos por célula, 32 passos). A linha 2 é a régua, em dB abaixo
   do topo. O pico é um segmento aceso sozinho; no clip, o "0" da régua vira um bloco cheio
   (o caractere 255 da ROM, fora dos 8 desenhos).
+- "kx393", o medidor do Yamaha KX-393: L e R dividem a linha 1, sem letras, um segmento
+  por célula (16 passos) na escala do deck, que não é linear: -30 a +8 dB, de 2 em 2 perto
+  do 0. O 0 do deck fica KX_ZERO dB abaixo do topo, e os segmentos acima dele são mais
+  altos, no lugar do vermelho. A linha 2 é a régua do deck. O pico é um segmento aceso
+  sozinho; o clip acende o último.
 
 Escala (names.py): o REC OUT chega em níveis bem diferentes conforme a fonte (medido em
 2026-10-29 no Pi 5: DAB perto de -30 dBFS, o vinil perto de -11). Na escala automática,
@@ -54,7 +59,7 @@ STEPS = 75                      # 15 células x 5 colunas de pixels
 TICKS_DB = (-30, -20, -10, -6, -3)   # abaixo do topo
 SILENT_DB = -100.0
 FLAG_PROGRAMME = 1
-LAYOUTS = ("bars", "deck", "scale")
+LAYOUTS = ("bars", "deck", "scale", "kx393")
 
 
 def _rows(bits, rows):
@@ -95,6 +100,21 @@ SCALE_GLYPHS = b"".join(
 # Na ordem de prioridade: uma marca que não cabe sem encostar noutra fica de fora.
 SCALE_MARKS = ((0, "0"), (-20, "20"), (-10, "10"), (-30, "30"), (-6, "6"), (-3, "3"))
 BLOCK = chr(255)                # bloco cheio da ROM do HD44780
+
+# KX-393: os degraus da escala do deck, em dB a partir do 0 dele (um por célula).
+KX_DB = (-30, -25, -20, -17, -14, -12, -10, -8, -6, -4, -2, 0, 2, 4, 6, 8)
+KX_ZERO = -10                   # o 0 do deck, abaixo do topo: os trechos mais altos chegam ao +4
+KX_RULER = "30 17 10 4 0 4 8"   # cada número começa embaixo do seu segmento
+
+
+def _kx(left, right, hot):
+    """Um segmento do KX-393: L nas linhas de cima, R nas de baixo; o quente é mais alto."""
+    rows_l, rows_r = ((0, 1, 2), (5, 6, 7)) if hot else ((1, 2), (5, 6))
+    return bytes([0x1E if (left and y in rows_l) or (right and y in rows_r) else 0 for y in range(8)])
+
+
+# Código = 3 se quente + 0 só L, 1 só R, 2 os dois; 6 e 7 sem uso.
+KX_GLYPHS = b"".join(_kx(l, r, hot) for hot in (0, 1) for l, r in ((1, 0), (0, 1), (1, 1))) + bytes(16)
 
 
 def db(rms):
@@ -150,7 +170,8 @@ class Vu:
         """cfg = names.json "vu": {"on", "auto", "floor", "top", "layout", "relay"}."""
         self.on = cfg["on"]
         self.layout = cfg["layout"]
-        self.glyphs = {"bars": GLYPHS, "deck": DECK_GLYPHS, "scale": SCALE_GLYPHS}[self.layout]
+        self.glyphs = {"bars": GLYPHS, "deck": DECK_GLYPHS, "scale": SCALE_GLYPHS,
+                       "kx393": KX_GLYPHS}[self.layout]
         self.error = None
         self.auto = cfg["auto"]
         if self.auto:
@@ -295,9 +316,29 @@ class Vu:
             ruler = ruler[:15] + BLOCK
         return "".join(out), ruler
 
+    def _kx_lit(self, m):
+        """Os segmentos acesos de um canal no KX-393: a barra, o pico sozinho e o clip."""
+        zero = self.top + KX_ZERO
+        lv = sum(1 for d in KX_DB if m.level >= zero + d)
+        pk = sum(1 for d in KX_DB if m.peak >= zero + d)
+        last = len(KX_DB) - 1
+        return [i < lv or (pk > lv and i == pk - 1) or (i == last and m.clip) for i in range(last + 1)]
+
+    def _kx393(self):
+        l, r = self._kx_lit(self.L), self._kx_lit(self.R)
+        out = []
+        for i, d in enumerate(KX_DB):
+            if l[i] or r[i]:
+                out.append(chr((3 if d > 0 else 0) + (2 if l[i] and r[i] else 1 if r[i] else 0)))
+            else:
+                out.append(" ")
+        return "".join(out), KX_RULER
+
     def lines(self):
         if self.layout == "scale":
             return self._scale()
+        if self.layout == "kx393":
+            return self._kx393()
         row = self._deck if self.layout == "deck" else self._bars
         return row("L", self.L), row("R", self.R)
 

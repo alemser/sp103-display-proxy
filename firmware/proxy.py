@@ -10,7 +10,9 @@ Cada tela completa do controlador é reconstruída (hd44780.py), vai para o leit
 (names.rewrite). Os desenhos próprios (CGRAM) e o "display on/off" seguem os do controlador.
 
 Com o VU ligado na página (vu.py), as duas linhas viram as barras L e R enquanto houver
-música; cada redesenho do controlador traz a tela do amp de volta por 3 s.
+música; cada redesenho do controlador traz a tela do amp de volta por 3 s. Com as telas de
+informação ligadas (info.py recebe, screens.py escolhe), o display mostra também o que
+está tocando, o fim do lado, a agulha e o relógio no standby.
 
 Publica o estado em http://sp103.local/ (ou pelo IP), com /bus e atualização pelo Wi-Fi,
 como a escuta. Sem Wi-Fi, o display continua funcionando.
@@ -29,8 +31,10 @@ responder = busy.Responder()
 import time
 import asyncio
 
+import info as info_feed
 import names
 import ota
+import screens as screens_mod
 import sp103_screens as s
 import vu as vu_meter
 from amp_state import AmpState
@@ -44,6 +48,8 @@ from web import Publisher, wifi_task
 QUIET_US = 2000
 REFRESH_MS = 30_000                     # redesenha tudo de vez em quando (ruído nos fios)
 AMP_HOLD_MS = 3000                      # com o VU ligado, a tela do amp fica 3 s depois de cada redesenho
+PICK_MS = 100                           # escolhe a tela no máximo a cada 100 ms (ou a cada quadro/pacote)
+OWN_REDRAW_MS = 250                     # uma tela de informação é recalculada a cada 250 ms (relógios, rolagem)
 CLOCK_EVERY_S = 6 * 3600                # acerta o relógio pela internet a cada 6 h
 D7 = 1 << 10                            # o D7 na palavra do sniffer (hd44780.py)
 
@@ -65,16 +71,30 @@ shown_cgram = None
 shown_on = None
 last_full = time.ticks_ms()
 vu = vu_meter.Vu()
-vu.configure(texts["vu"])
-vu_mode = False                         # o display mostra o VU (e os desenhos dele)
+info = info_feed.Info()
+screens = screens_mod.Screens(info)
+own = None                              # a tela própria no display ("vu", "track"...); None = a do amp
+own_at = time.ticks_ms()                # quando ela foi desenhada
 amp_until = time.ticks_ms()             # até aqui, a tela do amp tem a vez
+
+
+def configure_feeds(cfg):
+    """Aplica as configurações do VU e das telas. No modo fixo o VU nem pede quadros."""
+    screens.configure(cfg["info"])
+    vu_cfg = dict(cfg["vu"])
+    vu_cfg["on"] = vu_cfg["on"] and screens.vu_allowed()
+    vu.configure(vu_cfg)
+    info.configure(cfg["info"]["on"], cfg["info"]["source"] or cfg["vu"]["relay"])
+
+
+configure_feeds(texts)
 
 
 def draw(full=False):
     """Põe no display do amp a tela do controlador, com os textos personalizados.
     Só manda o que mudou; full=True resincroniza e reescreve tudo (sem apagar a tela)."""
-    global shown_cgram, shown_on, last_full, vu_mode
-    vu_mode = False
+    global shown_cgram, shown_on, last_full, own
+    own = None
     m = bus.lcd
     if full:
         lcd.resync()
@@ -95,20 +115,23 @@ def draw(full=False):
         shown_on = m.display_on
 
 
-def show_vu(full=False):
-    """Põe o VU no display. Os desenhos do VU tomam o lugar dos do controlador;
-    o draw() seguinte grava os do controlador de volta (o shown_cgram muda)."""
-    global shown_cgram, last_full, vu_mode
-    vu_mode = True
+def show_own(key, ms, full=False):
+    """Põe no display uma tela própria: o VU ou uma tela de informação. Os desenhos dela
+    tomam o lugar dos do controlador; o draw() seguinte grava os do controlador de volta
+    (o shown_cgram muda). Só manda as linhas que mudaram."""
+    global shown_cgram, last_full, own, own_at
+    own, own_at = key, ms
     if full:
         lcd.resync()
         shown[0] = shown[1] = shown_cgram = None
         last_full = time.ticks_ms()
-    if shown_cgram != vu.glyphs:
+    glyphs = vu.glyphs if key == "vu" else screens_mod.GLYPHS
+    if shown_cgram != glyphs:
         for code in range(8):
-            lcd.define_char(code, vu.glyphs[8 * code:8 * code + 8])
-        shown_cgram = vu.glyphs
-    for row, text in enumerate(vu.lines()):
+            lcd.define_char(code, glyphs[8 * code:8 * code + 8])
+        shown_cgram = glyphs
+    lines = vu.lines() if key == "vu" else screens.lines(key, ms)
+    for row, text in enumerate(lines):
         if text != shown[row]:
             lcd.write_line(row, text)
             shown[row] = text
@@ -121,21 +144,25 @@ def set_texts(cfg):
     names.save(texts)
     if state.set_names(texts["inputs"], time.ticks_ms()):
         pub.changed()
-    vu.configure(texts["vu"])
+    configure_feeds(texts)
     draw()
 
 
 def status():
+    ms = time.ticks_ms()
     return {"proxy": {"reads": bus.reads, "writes": bus.writes, "busy_high": busy_high},
-            "vu": vu.status(time.ticks_ms()),
+            "vu": vu.status(ms), "info": info.status(ms), "screens": screens.status(ms),
             "vu_glyphs": {name: list(g) for name, g in (("bars", vu_meter.GLYPHS),
                                                         ("deck", vu_meter.DECK_GLYPHS),
-                                                        ("scale", vu_meter.SCALE_GLYPHS))}}
+                                                        ("scale", vu_meter.SCALE_GLYPHS),
+                                                        ("kx393", vu_meter.KX_GLYPHS))}}
 
 
 async def listen():
     global listen_ticks, busy_high, answered, amp_until
     quiet_since = time.ticks_us()
+    picked_at = time.ticks_ms()
+    key = None
     clears = 0
     clears_seen = 0                     # o bus.clears na tela anterior
     while True:
@@ -171,25 +198,42 @@ async def listen():
                 pub.changed()
             log.screen(ms, state.screen != "unknown")
         elif not n and quiet and time.ticks_diff(ms, last_full) > REFRESH_MS:
-            if vu_mode:
-                show_vu(full=True)
+            if own:
+                show_own(own, ms, full=True)
             else:
                 draw(full=True)
-        # VU: só com música, quadros chegando, o display ligado e a tela do amp fora da vez.
-        # Um erro no VU o desliga e mantém o display do amp: com o VU salvo ligado, um erro
-        # que derrubasse o programa faria o Pico reiniciar sem parar.
+        # Telas próprias (VU e informação): só com o display ligado e a tela do amp fora da
+        # vez. A escolha é barata, mas roda no máximo a cada PICK_MS, ou quando chega um
+        # quadro do VU ou um pacote das telas. Um erro aqui desliga o VU e as telas e mantém
+        # o display do amp: com eles salvos ligados, um erro que derrubasse o programa faria
+        # o Pico reiniciar sem parar.
         try:
             new_frame = vu.poll(ms)
-            want_vu = vu.active(ms) and time.ticks_diff(ms, amp_until) >= 0 and bus.lcd.display_on
-            if want_vu and not bus.pending and (new_frame or not vu_mode):
-                show_vu()
-            elif vu_mode and not want_vu:
+            new_info = info.poll(ms)
+            if time.ticks_diff(ms, amp_until) < 0 or not bus.lcd.display_on:
+                key = None                  # a tela do amp tem a vez (conferido a cada volta)
+                picked_at = time.ticks_add(ms, -PICK_MS)   # escolhe logo que ela sair
+            elif new_frame or new_info or time.ticks_diff(ms, picked_at) >= PICK_MS:
+                picked_at = ms
+                key = screens.pick(ms, state.power == "standby", vu.active(ms), state.input)
+            if key and not bus.pending:
+                if key == "vu":
+                    if new_frame or own != "vu":
+                        show_own("vu", ms)
+                elif key != own or new_info or time.ticks_diff(ms, own_at) >= OWN_REDRAW_MS:
+                    show_own(key, ms)
+            elif own and not key:
                 draw()
         except Exception as e:
-            print("vu: turned off after an error:", repr(e))
-            vu.error = repr(e)
+            print("screens: turned off after an error:", repr(e))
+            vu.error = screens.error = repr(e)
             vu.on = False
             vu.close()
+            info.configure(False, "0.0.0.0")
+            off = dict(screens.cfg)
+            off["on"] = False
+            screens.cfg = off
+            key = None
             draw(full=True)
         await asyncio.sleep_ms(1)
 

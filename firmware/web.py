@@ -6,7 +6,8 @@
     GET /names    os textos personalizados (nomes das entradas e telas de inicialização)
     PUT /names    troca os textos: {"inputs": {"TUNER": "Rega Planar 2"}, "boot": [...], "about": [...],
                   "vu": {"on": true, "auto": true, "floor": -40, "top": 0, "layout": "bars",
-                         "relay": "192.168.178.105"}}
+                         "relay": "192.168.178.105"},
+                   "info": {"on": true, "mode": "temp", ...}}      (telas de informação)
                   (texto vazio = original; ver names.py)
     outras        rotas extras, por prefixo: routes={"/update": ota.handle, "/bus": log.handle}
 
@@ -148,12 +149,17 @@ function loadNames(){fetch("/names").then(r=>r.json()).then(d=>{const c=d.config
  '<label for="vufl">Manual floor (dB)</label><input type="number" id="vufl" name="vu:floor" min="-60" max="-10" '+
  'step="1" value="'+c.vu.floor+'"><label for="vutp">Manual top (dB)</label><input type="number" id="vutp" '+
  'name="vu:top" min="-30" max="0" step="1" value="'+c.vu.top+'"><label for="vuip">VU source (IP)</label><input id="vuip" name="vu:relay" '+
- 'value="'+q(c.vu.relay)+'"><span class="amp">'+vuText(d.vu)+'</span><button>Save</button>';
- VG=d.vu_glyphs||null;ly=c.vu.layout;nf.querySelector("#vuly").onchange=e=>{ly=e.target.value}})}
+ 'value="'+q(c.vu.relay)+'"><span class="amp">'+vuText(d.vu)+'</span>'+infoForm(c.info,d)+'<button>Save</button>';
+ VG=d.vu_glyphs||null;ly=c.vu.layout;nf.querySelector("#vuly").onchange=e=>{ly=e.target.value};
+ nf.querySelector("#inmo").onchange=imode;imode()})}
 // VU layout preview: the same drawing as vu.py, fed with made-up music on the automatic scale
-const VL=[["bars","Thin bars"],["deck","Cassette deck"],["scale","Printed scale"]];
+const VL=[["bars","Thin bars"],["deck","Cassette deck"],["scale","Printed scale"],["kx393","Yamaha KX-393"]];
 const FT={L:[16,16,16,16,16,16,31],R:[30,17,17,30,20,18,17],"0":[14,17,19,21,25,17,14],"1":[4,12,4,4,4,4,14],
- "2":[14,17,1,2,4,8,31],"3":[31,2,4,2,1,17,14],"6":[6,8,16,30,17,17,14]};
+ "2":[14,17,1,2,4,8,31],"3":[31,2,4,2,1,17,14],"4":[2,6,10,18,31,2,2],"6":[6,8,16,30,17,17,14],
+ "7":[31,1,2,4,8,8,8],"8":[14,17,17,14,17,17,14]};
+const KX=[-30,-25,-20,-17,-14,-12,-10,-8,-6,-4,-2,0,2,4,6,8];
+function kxl(m){const z=vtop-10,lv=KX.filter(d=>m.lv>=z+d).length,pk=KX.filter(d=>m.pk>=z+d).length;
+ return KX.map((_,i)=>i<lv||(pk>lv&&i==pk-1)||(i==15&&m.c>0))}
 const TK=[7,10,12],RU="20      10 6 3 0",DT=1/21.5;
 let VG=null,ly="bars",vt=0,vtop=-40,vacc=0,vlast=0;const VM=[{lv:-99,pk:-99,h:0,c:0},{lv:-99,pk:-99,h:0,c:0}];
 const cl=(v,a,b)=>Math.max(a,Math.min(b,v)),vpx=(d,n)=>cl(Math.round((d-vtop+20)/20*n),0,n);
@@ -172,6 +178,8 @@ function half(lv,pk,c){const s=cl(lv-2*c,0,2);return s||pk<=lv||Math.floor((pk-1
 function vrows(){if(ly=="scale"){const l=vpx(VM[0].lv,32),r=vpx(VM[1].lv,32),pl=vpx(VM[0].pk,32),pr=vpx(VM[1].pk,32),b=[];
   for(let c=0;c<16;c++){const x=half(l,pl,c),y=half(r,pr,c);b.push(x||y?3*x+y-1:" ")}
   const u=Array.from(RU);if(VM[0].c||VM[1].c)u[15]=255;return[b,u]}
+ if(ly=="kx393"){const l=kxl(VM[0]),r=kxl(VM[1]);
+  return[KX.map((d,i)=>l[i]||r[i]?(d>0?3:0)+(l[i]&&r[i]?2:r[i]?1:0):" "),Array.from("30 17 10 4 0 4 8")]}
  const f=ly=="deck"?deck:bars;return[["L",...f(VM[0])],["R",...f(VM[1])]]}
 function vdraw(ts){requestAnimationFrame(vdraw);const cv=document.getElementById("vupv");if(!cv||!VG)return;
  vacc+=Math.min(.1,(ts-vlast)/1000);vlast=ts;while(vacc>=DT){vacc-=DT;vstep()}
@@ -185,10 +193,42 @@ requestAnimationFrame(vdraw);
 function vuText(v){if(v&&v.error)return"VU turned off after an error: "+v.error;if(!v||!v.on)return"VU off";if(v.showing)return"VU on the display now, scale "+v.floor+" to "+v.top+" dB";
  if(v.last_frame_ms===null||v.last_frame_ms>1000)return"no data from the VU source";
  return v.music?"amp screen for a moment":"waiting for music"}
+// Info screens (screens.py): what is playing, from the source in docs/api-telas.md
+const IK=[["track","Artist and title"],["pos","Track and position"],["side","Time left on the side"],["stylus","Stylus hours"]];
+const chk=(id,name,on,text)=>'<label class="chk"><input type="checkbox" id="'+id+'" name="'+name+'"'+(on?" checked":"")+'> '+text+'</label>';
+function infoForm(c,d){return'<b>Info screens</b><span></span><label for="inon">Info screens</label>'+
+ chk("inon","info:on",c.on,"show what is playing")+
+ '<label for="inmo">While playing</label><select id="inmo" name="info:mode"><option value="temp"'+(c.mode=="temp"?" selected":"")+
+ '>Temporary: when the track changes</option><option value="fixed"'+(c.mode=="fixed"?" selected":"")+'>Fixed: one screen all the time</option></select>'+
+ '<label class="mt" for="inse">Seconds per screen</label><input class="mt" type="number" id="inse" name="info:secs" min="3" max="60" step="1" value="'+c.secs+'">'+
+ '<label class="mt">Screens</label><span class="mt">'+IK.map(([k,n])=>chk("ins"+k,"info:show:"+k,c.show.includes(k),
+  n+(k=="stylus"?" (when a side starts)":""))).join("")+'</span>'+
+ '<span class="amp mt">each screen in turn when the track changes; then the VU, if it is on</span>'+
+ '<label class="mf" for="infx">Screen</label><select class="mf" id="infx" name="info:fixed">'+IK.map(([k,n])=>'<option value="'+k+'"'+
+  (c.fixed==k?" selected":"")+'>'+n+'</option>').join("")+'</select><span class="amp mf">all the time while playing; the VU is not shown</span>'+
+ '<label>Stylus screen on</label><span>'+d.inputs.map(k=>chk("intt"+k.replace("/",""),"info:turntable:"+k,
+  c.turntable.includes(k),k+(d.config.inputs[k]?" ("+d.config.inputs[k]+")":""))).join("")+'</span>'+
+ '<span class="amp">the inputs with a turntable</span>'+
+ '<label for="inal">End of side</label>'+chk("inal","info:alert",c.alert,"last minute and &quot;Flip the record&quot;")+
+ '<label for="incl">Standby</label>'+chk("incl","info:clock",c.clock,"show the clock")+
+ '<label for="insc">Long names</label>'+chk("insc","info:scroll",c.scroll,"scroll")+
+ '<label for="intz">UTC offset (h)</label><input type="number" id="intz" name="info:utc_offset" min="-12" max="14" step="0.25" value="'+c.utc_offset+'">'+
+ '<label for="inds">Summer time</label>'+chk("inds","info:eu_dst",c.eu_dst,"European rule (+1 h)")+
+ '<label for="insr">Info source (IP)</label><input id="insr" name="info:source" placeholder="same as the VU source" value="'+q(c.source)+'">'+
+ '<span class="amp">'+infoText(d.info,d.screens)+'</span>'}
+// Only the fields of the chosen mode: temporary (.mt) or fixed (.mf)
+function imode(){const f=nf.querySelector("#inmo").value=="fixed";
+ nf.querySelectorAll(".mt").forEach(e=>e.style.display=f?"none":"");nf.querySelectorAll(".mf").forEach(e=>e.style.display=f?"":"none")}
+function infoText(i,s){if(s&&s.error)return"Info screens turned off after an error: "+s.error;if(!i||!i.on)return"Info screens off";
+ if(i.last_packet_ms===null||i.last_packet_ms>15000)return"no data from the info source";
+ const now=i.playing&&i.title?"playing: "+(i.artist?i.artist+" – ":"")+i.title:i.side_end?"side ended":"nothing playing";
+ return now+(s&&s.showing?" - on the display: "+s.showing:"")}
 loadNames();
-nf.onsubmit=e=>{e.preventDefault();const b={inputs:{},boot:["",""],about:["",""],vu:{}};
- for(const i of nf.querySelectorAll("input,select")){const [g,k]=i.name.split(":");
+nf.onsubmit=e=>{e.preventDefault();const b={inputs:{},boot:["",""],about:["",""],vu:{},info:{show:[],turntable:[]}};
+ for(const i of nf.querySelectorAll("input,select")){const [g,k,x]=i.name.split(":");
   if(g=="i")b.inputs[k]=i.value;else if(g=="vu")b.vu[k]=k=="on"||k=="auto"?i.checked:k=="floor"||k=="top"?Number(i.value):i.value;
+  else if(g=="info"){if(k=="show"||k=="turntable"){if(i.checked)b.info[k].push(x)}
+   else b.info[k]=["on","alert","clock","scroll","eu_dst"].includes(k)?i.checked:k=="secs"||k=="utc_offset"?Number(i.value):i.value}
   else b[g][+k]=i.value}
  fetch("/names",{method:"PUT",body:JSON.stringify(b)}).then(r=>r.json()).then(d=>{
  nst.textContent=d.error?"Error: "+d.error:"Saved.";if(!d.error)loadNames()})};
