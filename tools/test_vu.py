@@ -67,15 +67,16 @@ def frame(l_db, r_db, music=True):
 
 
 def cfg(**kw):
-    c = {"on": True, "auto": False, "floor": -40, "top": 0, "relay": "192.168.178.105"}
+    c = {"on": True, "auto": False, "floor": -40, "top": 0, "layout": "bars", "relay": "192.168.178.105"}
     c.update(kw)
     return c
 
 
 # --- names.py: a configuração do VU ---------------------------------------
 default = names.validate({})["vu"]
-check(default == {"on": False, "auto": True, "floor": -40, "top": 0, "relay": "192.168.178.105"},
-      "padrão: VU desligado, escala automática")
+check(default == {"on": False, "auto": True, "floor": -40, "top": 0, "layout": "bars",
+                  "relay": "192.168.178.105"},
+      "padrão: VU desligado, escala automática, barras finas")
 check(names.validate({"vu": {"on": True, "floor": -30}})["vu"]["floor"] == -30, "piso configurável")
 check(names.validate({"vu": {"on": True}})["inputs"] == {}, "só 'vu' não vira o formato antigo")
 for bad, what in (({"floor": -70}, "piso fora da faixa"), ({"floor": "x"}, "piso não numérico"),
@@ -129,7 +130,47 @@ for bad in ({"top": 5}, {"top": -40}, {"floor": -25, "top": -20}, {"top": True})
         check(False, "recusa %r" % bad)
     except ValueError:
         check(True, "recusa %r" % bad)
-check(len(vu.GLYPHS) == 64, "8 desenhos de 8 linhas")
+check(all(len(g) == 64 for g in (vu.GLYPHS, vu.DECK_GLYPHS, vu.SCALE_GLYPHS)), "8 desenhos de 8 linhas")
+check(names.VU_LAYOUTS == vu.LAYOUTS, "names.py e vu.py conhecem os mesmos layouts")
+check(names.validate({})["vu"]["layout"] == "bars", "layout padrão: barras finas")
+check(names.validate({"vu": {"layout": "deck"}})["vu"]["layout"] == "deck", "layout configurável")
+try:
+    names.validate({"vu": {"layout": "kx393"}})
+    check(False, "recusa um layout que não existe")
+except ValueError:
+    check(True, "recusa um layout que não existe")
+
+# --- Vu: deck de cassete -------------------------------------------------------
+v = vu.Vu()
+v.configure(cfg(layout="deck"))
+check(v.glyphs is vu.DECK_GLYPHS, "deck: os desenhos do deck")
+v.L.level, v.L.peak = -20, -4         # 15 de 30 segmentos; o pico no 27
+v.R.level = v.R.peak = vu.SILENT_DB
+l1, l2 = v.lines()
+check(len(l1) == len(l2) == 16 and l1[0] == "L" and l2[0] == "R", "deck: duas linhas, L e R")
+check(l1[1:8] == chr(1) * 7 and l1[8] == chr(0), "deck: 15 segmentos = 7 células cheias e meia")
+check(l1[14] == chr(3), "deck: o pico na zona quente, um segmento sozinho e mais alto")
+check(set(l2[1:]) <= {" ", chr(vu.DECK_TICK)} and chr(vu.DECK_TICK) in l2, "deck: canal mudo, só as marcas")
+v.L.clip = True
+check(v.lines()[0][15] == chr(4), "deck: o clip acende a última célula inteira")
+
+# --- Vu: escala impressa ---------------------------------------------------------
+v = vu.Vu()
+v.configure(cfg(auto=True, layout="scale"))
+check(v.glyphs is vu.SCALE_GLYPHS, "escala: os desenhos dos pares L/R")
+bar, ruler = v.lines()
+check(ruler == "20      10 6 3 0", "escala: a régua de 20 dB (%r)" % ruler)
+check(bar == " " * 16, "escala: sem som, a linha de cima vazia")
+v.configure(cfg(layout="scale"))      # manual, 40 dB: piso -40, topo 0
+v.L.level, v.L.peak = -20, -5         # L: 16 de 32 segmentos; o pico no 28 (célula 13, direita)
+v.R.level, v.R.peak = -30, -30        # R: 8 segmentos
+bar, ruler = v.lines()
+check(bar[:4] == chr(3 * 2 + 2 - 1) * 4, "escala: L e R cheios nas 4 primeiras células")
+check(bar[4:8] == chr(3 * 2 - 1) * 4, "escala: depois só o L")
+check(bar[13] == chr(3 * 2 - 1) and bar[8:13] == " " * 5, "escala: o pico do L sozinho, na célula 13")
+check(ruler.endswith(" 0") and "30" in ruler, "escala manual de 40 dB: a régua até 30 abaixo do topo (%r)" % ruler)
+v.R.clip = True
+check(v.lines()[1][15] == vu.BLOCK, "escala: no clip, o 0 vira um bloco cheio")
 
 # --- Vu: escala automática ---------------------------------------------------
 v = vu.Vu()

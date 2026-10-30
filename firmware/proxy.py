@@ -104,10 +104,10 @@ def show_vu(full=False):
         lcd.resync()
         shown[0] = shown[1] = shown_cgram = None
         last_full = time.ticks_ms()
-    if shown_cgram != vu_meter.GLYPHS:
+    if shown_cgram != vu.glyphs:
         for code in range(8):
-            lcd.define_char(code, vu_meter.GLYPHS[8 * code:8 * code + 8])
-        shown_cgram = vu_meter.GLYPHS
+            lcd.define_char(code, vu.glyphs[8 * code:8 * code + 8])
+        shown_cgram = vu.glyphs
     for row, text in enumerate(vu.lines()):
         if text != shown[row]:
             lcd.write_line(row, text)
@@ -127,7 +127,10 @@ def set_texts(cfg):
 
 def status():
     return {"proxy": {"reads": bus.reads, "writes": bus.writes, "busy_high": busy_high},
-            "vu": vu.status(time.ticks_ms())}
+            "vu": vu.status(time.ticks_ms()),
+            "vu_glyphs": {name: list(g) for name, g in (("bars", vu_meter.GLYPHS),
+                                                        ("deck", vu_meter.DECK_GLYPHS),
+                                                        ("scale", vu_meter.SCALE_GLYPHS))}}
 
 
 async def listen():

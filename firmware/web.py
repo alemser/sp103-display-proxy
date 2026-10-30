@@ -5,7 +5,8 @@
     GET /events   Server-Sent Events: um "data: {json}" a cada mudança
     GET /names    os textos personalizados (nomes das entradas e telas de inicialização)
     PUT /names    troca os textos: {"inputs": {"TUNER": "Rega Planar 2"}, "boot": [...], "about": [...],
-                  "vu": {"on": true, "auto": true, "floor": -40, "top": 0, "relay": "192.168.178.105"}}
+                  "vu": {"on": true, "auto": true, "floor": -40, "top": 0, "layout": "bars",
+                         "relay": "192.168.178.105"}}
                   (texto vazio = original; ver names.py)
     outras        rotas extras, por prefixo: routes={"/update": ota.handle, "/bus": log.handle}
 
@@ -101,9 +102,10 @@ body{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:16px system
 .st{text-align:center;color:var(--dim);font-size:13px;margin-top:14px}
 h3,form{max-width:640px;margin:22px auto 8px}form{display:grid;grid-template-columns:auto 1fr;gap:8px 10px;align-items:center}
 .amp{grid-column:2;color:var(--dim);font-size:12px;margin-top:-4px}
-input{font:16px ui-monospace,Menlo,monospace;padding:6px 8px;border-radius:6px;border:1px solid var(--dim);
+input,select{font:16px ui-monospace,Menlo,monospace;padding:6px 8px;border-radius:6px;border:1px solid var(--dim);
  background:var(--card);color:var(--fg)}button{grid-column:2;padding:8px;font-size:16px;border-radius:6px}
 .chk{display:flex;gap:8px;align-items:center}.chk input{width:18px;height:18px}
+#vupv{grid-column:2;width:100%;max-width:420px;border-radius:6px}
 </style></head><body>
 <div class="lcd" id="lcd">                \n                </div>
 <div class="grid" id="g"></div>
@@ -140,16 +142,52 @@ function loadNames(){fetch("/names").then(r=>r.json()).then(d=>{const c=d.config
  'id="vuon" name="vu:on"'+(c.vu.on?" checked":"")+'> only while music plays</label>'+
  '<label for="vuau">VU scale</label><label class="chk"><input type="checkbox" id="vuau" name="vu:auto"'+
  (c.vu.auto?" checked":"")+'> automatic (follows the music)</label>'+
+ '<label for="vuly">VU layout</label><select id="vuly" name="vu:layout">'+VL.map(([k,n])=>'<option value="'+k+'"'+
+ (c.vu.layout==k?" selected":"")+'>'+n+'</option>').join("")+'</select><canvas id="vupv" width="404" height="74" '+
+ 'aria-label="VU layout preview"></canvas><span class="amp">preview with made-up music, automatic scale</span>'+
  '<label for="vufl">Manual floor (dB)</label><input type="number" id="vufl" name="vu:floor" min="-60" max="-10" '+
  'step="1" value="'+c.vu.floor+'"><label for="vutp">Manual top (dB)</label><input type="number" id="vutp" '+
  'name="vu:top" min="-30" max="0" step="1" value="'+c.vu.top+'"><label for="vuip">VU source (IP)</label><input id="vuip" name="vu:relay" '+
- 'value="'+q(c.vu.relay)+'"><span class="amp">'+vuText(d.vu)+'</span><button>Save</button>'})}
+ 'value="'+q(c.vu.relay)+'"><span class="amp">'+vuText(d.vu)+'</span><button>Save</button>';
+ VG=d.vu_glyphs||null;ly=c.vu.layout;nf.querySelector("#vuly").onchange=e=>{ly=e.target.value}})}
+// VU layout preview: the same drawing as vu.py, fed with made-up music on the automatic scale
+const VL=[["bars","Thin bars"],["deck","Cassette deck"],["scale","Printed scale"]];
+const FT={L:[16,16,16,16,16,16,31],R:[30,17,17,30,20,18,17],"0":[14,17,19,21,25,17,14],"1":[4,12,4,4,4,4,14],
+ "2":[14,17,1,2,4,8,31],"3":[31,2,4,2,1,17,14],"6":[6,8,16,30,17,17,14]};
+const TK=[7,10,12],RU="20      10 6 3 0",DT=1/21.5;
+let VG=null,ly="bars",vt=0,vtop=-40,vacc=0,vlast=0;const VM=[{lv:-99,pk:-99,h:0,c:0},{lv:-99,pk:-99,h:0,c:0}];
+const cl=(v,a,b)=>Math.max(a,Math.min(b,v)),vpx=(d,n)=>cl(Math.round((d-vtop+20)/20*n),0,n);
+function vsrc(t,ch){const k=Math.exp(-((t*2)%1)*7),p=.5+.5*Math.sin(t*.35+ch),n=(Math.sin(t*13.1+ch*2.3)+Math.sin(t*29.7+ch))/2;
+ return Math.sin(t*.21)>.995?0:-24+k*14+p*6+n*2.5-ch*1.5}
+function vstep(){vt+=DT;const d=[vsrc(vt,0),vsrc(vt,1)],w=Math.max(d[0],d[1])+5;
+ vtop=cl(w>vtop?w:Math.max(w,vtop-DT),-40,0);
+ VM.forEach((m,i)=>{m.lv=d[i]>m.lv?d[i]:Math.max(d[i],m.lv-40*DT);if(m.lv>=m.pk){m.pk=m.lv;m.h=1}
+  else if((m.h-=DT)<=0)m.pk=Math.max(m.lv,m.pk-20*DT);m.c=d[i]>-1?1:Math.max(0,m.c-DT)})}
+function bars(m){const lv=vpx(m.lv,75),pk=vpx(m.pk,75),pc=pk>lv?Math.floor((pk-1)/5):-1,o=[];
+ for(let c=0;c<15;c++){const f=lv-5*c;o.push(c==14&&m.c?7:f>=5?4:f>0?f-1:c==pc?5:TK.includes(c)?6:" ")}return o}
+function deck(m){const lv=vpx(m.lv,30);let pk=vpx(m.pk,30);if(pk<=lv)pk=0;const o=[];
+ for(let c=0;c<15;c++){const x=c==14&&m.c,a=lv>=2*c+1||pk==2*c+1||x,b=lv>=2*c+2||pk==2*c+2||x;
+  o.push(a||b?(c>=12?3:0)+(a&&b?1:a?0:2):TK.includes(c)?6:" ")}return o}
+function half(lv,pk,c){const s=cl(lv-2*c,0,2);return s||pk<=lv||Math.floor((pk-1)/2)!=c?s:pk%2?1:2}
+function vrows(){if(ly=="scale"){const l=vpx(VM[0].lv,32),r=vpx(VM[1].lv,32),pl=vpx(VM[0].pk,32),pr=vpx(VM[1].pk,32),b=[];
+  for(let c=0;c<16;c++){const x=half(l,pl,c),y=half(r,pr,c);b.push(x||y?3*x+y-1:" ")}
+  const u=Array.from(RU);if(VM[0].c||VM[1].c)u[15]=255;return[b,u]}
+ const f=ly=="deck"?deck:bars;return[["L",...f(VM[0])],["R",...f(VM[1])]]}
+function vdraw(ts){requestAnimationFrame(vdraw);const cv=document.getElementById("vupv");if(!cv||!VG)return;
+ vacc+=Math.min(.1,(ts-vlast)/1000);vlast=ts;while(vacc>=DT){vacc-=DT;vstep()}
+ const g=cv.getContext("2d"),cs=getComputedStyle(document.body),u=4;
+ g.fillStyle=cs.getPropertyValue("--lcd");g.fillRect(0,0,cv.width,cv.height);
+ vrows().forEach((row,r)=>row.forEach((ch,c)=>{const bm=ch===255?[31,31,31,31,31,31,31,31]:
+  typeof ch=="number"?VG[ly].slice(8*ch,8*ch+8):FT[ch]||[];
+  for(let y=0;y<8;y++)for(let x=0;x<5;x++){g.fillStyle=(bm[y]||0)&(16>>x)?"#eef":"rgba(238,238,255,.12)";
+   g.fillRect(6+(c*6+x)*u,5+(r*9+y)*u,u-.6,u-.6)}}))}
+requestAnimationFrame(vdraw);
 function vuText(v){if(v&&v.error)return"VU turned off after an error: "+v.error;if(!v||!v.on)return"VU off";if(v.showing)return"VU on the display now, scale "+v.floor+" to "+v.top+" dB";
  if(v.last_frame_ms===null||v.last_frame_ms>1000)return"no data from the VU source";
  return v.music?"amp screen for a moment":"waiting for music"}
 loadNames();
 nf.onsubmit=e=>{e.preventDefault();const b={inputs:{},boot:["",""],about:["",""],vu:{}};
- for(const i of nf.querySelectorAll("input")){const [g,k]=i.name.split(":");
+ for(const i of nf.querySelectorAll("input,select")){const [g,k]=i.name.split(":");
   if(g=="i")b.inputs[k]=i.value;else if(g=="vu")b.vu[k]=k=="on"||k=="auto"?i.checked:k=="floor"||k=="top"?Number(i.value):i.value;
   else b[g][+k]=i.value}
  fetch("/names",{method:"PUT",body:JSON.stringify(b)}).then(r=>r.json()).then(d=>{

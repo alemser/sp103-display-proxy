@@ -44,8 +44,16 @@ a escala inteira em 1 s. Acima de −1 dBFS, a última célula acende
 inteira por 1 s (clip). Pontinhos no fundo da barra vazia marcam −30, −20, −10, −6 e −3 dB abaixo do topo (só os que estão acima
 do piso). O clip é sempre o de verdade (−1 dBFS), mesmo com o topo abaixo de 0.
 
-Os 8 desenhos próprios do display (`vu.GLYPHS`): 1 a 4 colunas, célula cheia, marca de pico, marca da escala e clip. No
-modo VU eles tomam o lugar das barras do amp; ao voltar para a tela do amp, o Pico grava de volta os do controlador.
+Isso é o layout "barras finas". Há três layouts, e cada um tem os seus 8 desenhos próprios. No modo VU eles tomam o
+lugar das barras do amp; ao voltar para a tela do amp, o Pico grava de volta os do controlador.
+
+| Layout | Linhas | Passos | Desenhos |
+|---|---|---|---|
+| Barras finas (`bars`) | L e R, uma linha cada, com a letra na coluna 0 | 75 | 1 a 4 colunas, célula cheia, pico, marca da escala, clip (`vu.GLYPHS`) |
+| Deck de cassete (`deck`) | como as barras, com 2 segmentos separados por célula; os das 3 últimas células mais altos (a zona quente). O pico é um segmento sozinho; o clip acende a última célula | 30 | 7 (`vu.DECK_GLYPHS`) |
+| Escala impressa (`scale`) | L e R na linha 1 (L na metade de cima de cada célula, R na de baixo); a linha 2 é a régua em dB abaixo do topo (`20 10 6 3 0` na escala automática). O pico é um segmento sozinho; no clip, o 0 da régua vira o bloco cheio da ROM | 32 | 8 pares L/R (`vu.SCALE_GLYPHS`) |
+
+A página do Pico mostra uma simulação do layout escolhido, com música inventada e a escala automática.
 
 ## Configuração (página do Pico, "Display")
 
@@ -53,11 +61,12 @@ modo VU eles tomam o lugar das barras do amp; ao voltar para a tela do amp, o Pi
 |---|---|---|
 | VU meter | desligado | — |
 | VU scale | automática | automática ou manual |
+| VU layout | barras finas | barras finas, deck de cassete ou escala impressa |
 | Manual floor (dB) | −40 | −60 a −10: a barra vazia (só na escala manual) |
 | Manual top (dB) | 0 | −30 a 0: a barra cheia; pelo menos 10 dB acima do piso (só na manual) |
 | VU source (IP) | 192.168.178.105 (oceano-0001) | um IP; o MicroPython não resolve nomes `.local` |
 
-Fica no `names.json` do Pico, junto com os nomes (`"vu": {"on", "auto", "floor", "top", "relay"}`). A linha embaixo dos campos diz o
+Fica no `names.json` do Pico, junto com os nomes (`"vu": {"on", "auto", "floor", "top", "layout", "relay"}`). A linha embaixo dos campos diz o
 que o VU está fazendo: "VU on the display now", "waiting for music", "no data from the VU source"...
 
 **Escala automática (padrão desde 2026-10-29):** o nível do REC OUT muda muito com a fonte. Medido no Pi 5 com

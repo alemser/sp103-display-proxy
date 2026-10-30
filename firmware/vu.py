@@ -1,14 +1,23 @@
-"""VU meter no display do amp: barras dos canais L e R, com a marca de pico.
+"""VU meter no display do amp: os canais L e R, com a marca de pico, em três layouts.
 
 Os quadros vêm do sp103-vu-relay (relay/main.go), que repassa o VU do groove-detector
 por UDP. O Pico pede a cada 2 s ("SUB1"); cada quadro tem 12 bytes:
 
     "VU" 0x01 flags  float32 L  float32 R      (RMS 0..1; flags: bit 0 = há música)
 
-Linha 1 = L, linha 2 = R. A coluna 0 mostra a letra; as colunas 1..15 são a barra, com
-5 colunas de pixels cada: 75 passos do piso até o topo. As marcas da escala ficam a -30,
--20, -10, -6 e -3 dB do topo. Os 8 desenhos próprios (CGRAM) do modo VU estão em GLYPHS;
-ao sair, o proxy.py grava de volta os do controlador.
+Layouts (names.py "layout"); cada um tem os seus 8 desenhos próprios (CGRAM), em
+Vu.glyphs, e ao sair o proxy.py grava de volta os do controlador:
+
+- "bars", barras finas: linha 1 = L, linha 2 = R. A coluna 0 mostra a letra; as colunas
+  1..15 são a barra, com 5 colunas de pixels cada: 75 passos do piso até o topo. As marcas
+  da escala ficam a -30, -20, -10, -6 e -3 dB do topo.
+- "deck", deck de cassete: como "bars", mas com dois segmentos separados por célula (30
+  passos); os das 3 últimas células são mais altos, no lugar da zona vermelha. O pico é
+  um segmento aceso sozinho; o clip acende a última célula.
+- "scale", escala impressa: L e R dividem a linha 1 (L na metade de cima de cada célula,
+  R na de baixo; 2 segmentos por célula, 32 passos). A linha 2 é a régua, em dB abaixo
+  do topo. O pico é um segmento aceso sozinho; no clip, o "0" da régua vira um bloco cheio
+  (o caractere 255 da ROM, fora dos 8 desenhos).
 
 Escala (names.py): o REC OUT chega em níveis bem diferentes conforme a fonte (medido em
 2026-10-29 no Pi 5: DAB perto de -30 dBFS, o vinil perto de -11). Na escala automática,
@@ -16,8 +25,8 @@ o topo fica AUTO_HEADROOM dB acima do quadro mais alto: sobe na hora e, com mús
 AUTO_FALL_DB_S; o piso fica AUTO_SPAN dB abaixo do topo. Na manual, piso e topo são fixos.
 
 A barra sobe na hora e a cheia esvazia em FALL_S. O pico fica parado 1 s e cai a escala
-inteira em PEAK_FALL_S. Acima de -1 dBFS (o clip de verdade, não o topo) a última célula
-acende inteira por 1 s.
+inteira em PEAK_FALL_S. Acima de -1 dBFS (o clip de verdade, não o topo) o clip acende
+por 1 s.
 """
 
 import math
@@ -45,6 +54,7 @@ STEPS = 75                      # 15 células x 5 colunas de pixels
 TICKS_DB = (-30, -20, -10, -6, -3)   # abaixo do topo
 SILENT_DB = -100.0
 FLAG_PROGRAMME = 1
+LAYOUTS = ("bars", "deck", "scale")
 
 
 def _rows(bits, rows):
@@ -63,6 +73,28 @@ GLYPHS = b"".join((
     _rows(0x1F, range(8)),      # 7: clip, na última célula
 ))
 FULL, PEAK, TICK, CLIP = 4, 5, 6, 7
+
+DECK_GLYPHS = b"".join((
+    _rows(0x18, _BAR),          # 0: segmento da esquerda
+    _rows(0x1B, _BAR),          # 1: os dois segmentos
+    _rows(0x03, _BAR),          # 2: o da direita (pico sozinho)
+    _rows(0x18, range(8)),      # 3..5: os mesmos na zona quente, mais altos
+    _rows(0x1B, range(8)),
+    _rows(0x03, range(8)),
+    _rows(0x04, (7,)),          # 6: marca da escala
+    bytes(8),                   # 7: sem uso
+))
+DECK_HOT, DECK_TICK = 12, 6     # da célula 12 em diante: zona quente
+
+# Escala impressa: estado de cada canal numa célula = 0 apagado, 1 só o segmento da
+# esquerda, 2 os dois. O desenho do par (l, r) é o código 3 * l + r - 1.
+_HALF = (0, 0x18, 0x1B)
+SCALE_GLYPHS = b"".join(
+    bytes([_HALF[l] if y < 3 else _HALF[r] if 4 <= y < 7 else 0 for y in range(8)])
+    for l in range(3) for r in range(3) if l or r)
+# Na ordem de prioridade: uma marca que não cabe sem encostar noutra fica de fora.
+SCALE_MARKS = ((0, "0"), (-20, "20"), (-10, "10"), (-30, "30"), (-6, "6"), (-3, "3"))
+BLOCK = chr(255)                # bloco cheio da ROM do HD44780
 
 
 def db(rms):
@@ -109,11 +141,16 @@ class Vu:
         self.error = None               # o proxy.py desliga o VU se ele der erro
         self.L = Meter()
         self.R = Meter()
+        self.layout = "bars"
+        self.glyphs = GLYPHS
         self._ticks = ()
+        self._ruler = " " * 16
 
     def configure(self, cfg):
-        """cfg = names.json "vu": {"on", "auto", "floor", "top", "relay"}."""
+        """cfg = names.json "vu": {"on", "auto", "floor", "top", "layout", "relay"}."""
         self.on = cfg["on"]
+        self.layout = cfg["layout"]
+        self.glyphs = {"bars": GLYPHS, "deck": DECK_GLYPHS, "scale": SCALE_GLYPHS}[self.layout]
         self.error = None
         self.auto = cfg["auto"]
         if self.auto:
@@ -123,10 +160,21 @@ class Vu:
         else:
             self.floor = cfg["floor"]
             self.top = cfg["top"]
-        # As marcas ficam a distâncias fixas do topo: na escala automática, que só se
-        # desloca, as células delas não mudam.
-        self._ticks = tuple(c for c in (self._cell(self.top + d) for d in TICKS_DB
-                                        if self.top + d > self.floor) if c >= 0)
+        # As marcas e a régua ficam a distâncias fixas do topo: na escala automática, que
+        # só se desloca, as células delas não mudam.
+        per_cell = 2 if self.layout == "deck" else 5
+        steps = 15 * per_cell
+        self._ticks = tuple(c for c in ((self._px(self.top + d, steps) - 1) // per_cell
+                                        for d in TICKS_DB if self.top + d > self.floor) if c >= 0)
+        span = self.top - self.floor
+        ruler = [" "] * 18              # com uma casa vazia de cada lado
+        for d, text in SCALE_MARKS:
+            if d < -span:
+                continue
+            col = 1 + min(16 - len(text), int((d + span) * 15 / span + 0.5))
+            if all(c == " " for c in ruler[col - 1:col + len(text) + 1]):
+                ruler[col:col + len(text)] = list(text)   # o MicroPython só aceita lista aqui
+        self._ruler = "".join(ruler[1:17])
         addr = (cfg["relay"], PORT)
         if addr != self.addr or not self.on:
             self.close()
@@ -139,12 +187,9 @@ class Vu:
             self.sock = None
         self.last_frame = None
 
-    def _px(self, value_db):
-        x = round((value_db - self.floor) * STEPS / (self.top - self.floor))
-        return 0 if x < 0 else STEPS if x > STEPS else x
-
-    def _cell(self, value_db):
-        return (self._px(value_db) - 1) // 5
+    def _px(self, value_db, steps=STEPS):
+        x = round((value_db - self.floor) * steps / (self.top - self.floor))
+        return 0 if x < 0 else steps if x > steps else x
 
     def poll(self, now):
         """Pede e lê os quadros (sem esperar). True se chegou um quadro novo."""
@@ -194,7 +239,7 @@ class Vu:
         return self.on and self.programme and self.last_frame is not None \
             and time.ticks_diff(now, self.last_frame) < STALE_MS
 
-    def _row(self, label, m):
+    def _bars(self, label, m):
         lv, pk = self._px(m.level), self._px(m.peak)
         peak_cell = (pk - 1) // 5 if pk > lv else -1
         out = [label]
@@ -214,11 +259,50 @@ class Vu:
                 out.append(" ")
         return "".join(out)
 
+    def _deck(self, label, m):
+        lv, pk = self._px(m.level, 30), self._px(m.peak, 30)
+        if pk <= lv:
+            pk = 0
+        out = [label]
+        for c in range(15):
+            a = lv >= 2 * c + 1 or pk == 2 * c + 1 or (c == 14 and m.clip)
+            b = lv >= 2 * c + 2 or pk == 2 * c + 2 or (c == 14 and m.clip)
+            hot = 3 if c >= DECK_HOT else 0
+            if a or b:
+                out.append(chr(hot + (1 if a and b else 0 if a else 2)))
+            else:
+                out.append(chr(DECK_TICK) if c in self._ticks else " ")
+        return "".join(out)
+
+    @staticmethod
+    def _half(lv, pk, c):
+        """Estado de um canal na célula c da escala impressa (0, 1 ou 2)."""
+        s = lv - 2 * c
+        s = 0 if s < 0 else 2 if s > 2 else s
+        if s or pk <= lv or (pk - 1) // 2 != c:
+            return s
+        return 1 if pk % 2 else 2       # o pico sozinho: só o da direita não tem desenho
+
+    def _scale(self):
+        l, r = self._px(self.L.level, 32), self._px(self.R.level, 32)
+        pl, pr = self._px(self.L.peak, 32), self._px(self.R.peak, 32)
+        out = []
+        for c in range(16):
+            a, b = self._half(l, pl, c), self._half(r, pr, c)
+            out.append(chr(3 * a + b - 1) if a or b else " ")
+        ruler = self._ruler
+        if self.L.clip or self.R.clip:
+            ruler = ruler[:15] + BLOCK
+        return "".join(out), ruler
+
     def lines(self):
-        return self._row("L", self.L), self._row("R", self.R)
+        if self.layout == "scale":
+            return self._scale()
+        row = self._deck if self.layout == "deck" else self._bars
+        return row("L", self.L), row("R", self.R)
 
     def status(self, now):
         age = None if self.last_frame is None else time.ticks_diff(now, self.last_frame)
-        return {"on": self.on, "auto": self.auto, "floor": round(self.floor), "top": round(self.top),
+        return {"on": self.on, "auto": self.auto, "layout": self.layout, "floor": round(self.floor), "top": round(self.top),
                 "frames": self.frames, "last_frame_ms": age,
                 "music": self.programme, "showing": self.active(now), "error": self.error}
