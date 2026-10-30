@@ -36,6 +36,7 @@ class Info:
         self.packets = 0
         self.playing = False
         self.side_end = False
+        self.side_end_at = 0            # ticks_ms em que o lado acabou
         self.data = {name: None for name in FIELDS}
         self.track_seq = 0              # muda a cada faixa nova (as telas temporárias recomeçam)
         self.side_start = False         # a faixa de agora é a primeira do lado
@@ -111,7 +112,10 @@ class Info:
             self.data = data
             data["elapsed"], data["side_left"] = keep
         self.playing = playing
-        self.side_end = bool(flags & FLAG_SIDE_END)
+        side_end = bool(flags & FLAG_SIDE_END)
+        if side_end and not self.side_end:
+            self.side_end_at = now
+        self.side_end = side_end
         self.last_packet = now
         self.packets += 1
 

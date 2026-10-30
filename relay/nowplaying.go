@@ -25,11 +25,14 @@ const (
 	npFlagPlaying = 1 << 0
 	npFlagSideEnd = 1 << 1
 
-	infoPoll     = time.Second
-	infoEvery    = 5 * time.Second // mesmo sem mudança
-	stylusEvery  = 10 * time.Minute
-	sideEndHold  = 15 * time.Minute
-	sideEndNear  = 30 // s: "acabou o lado" só se a última faixa estava a menos disso do fim
+	infoPoll    = time.Second
+	infoEvery   = 5 * time.Second // mesmo sem mudança
+	stylusEvery = 10 * time.Minute
+	sideEndHold = 15 * time.Minute
+	// "Acabou o lado" só se a última faixa estava a menos disto do fim, pela duração do
+	// catálogo. Medido no Pi 5 em 2026-10-30: Exodus (A5) acabou 12 s antes da duração do
+	// catálogo; One Love (B5), 5 s depois. Escolhido com folga sobre os dois.
+	sideEndNear  = 30 // s
 	maxText      = 40
 	httpTimeout  = 2 * time.Second
 	fieldDivider = "\x1f"
@@ -181,12 +184,16 @@ func sideOf(tracks []track, pos string, left int) (side string, idx, total, side
 type identityStatus struct {
 	Playback struct {
 		Active        bool   `json:"active"`
+		Epoch         uint64 `json:"epoch"`
 		Artist        string `json:"artist"`
 		Title         string `json:"title"`
 		TrackPosition string `json:"track_position"`
 		PositionMs    int64  `json:"position_ms"`
 		DurationMs    int64  `json:"duration_ms"`
 	} `json:"playback"`
+	Recognition struct {
+		Epoch uint64 `json:"epoch"`
+	} `json:"recognition"`
 	AlbumProgramme *struct {
 		ReleaseSource string `json:"release_source"`
 		ReleaseID     string `json:"release_id"`
@@ -212,7 +219,8 @@ type nowPlaying struct {
 	stylusAt   time.Time
 	last       info // a leitura anterior
 	sideEndAt  time.Time
-	lastWasEnd bool // a leitura anterior era a última faixa do lado, perto do fim
+	lastWasEnd bool   // a leitura anterior era a última faixa do lado, perto do fim
+	endedEpoch uint64 // a captura da última faixa de um lado que já acabou
 }
 
 func newNowPlaying(identity, catalog string) *nowPlaying {
@@ -254,7 +262,15 @@ func (np *nowPlaying) read(now time.Time) info {
 		return in
 	}
 	pb := st.Playback
-	if pb.Active && pb.Title != "" {
+	// Quando a música acaba, o groove-listener vê o fim da faixa e o identity abre uma
+	// captura nova (o sulco final) antes de largar a faixa que mostrava (27 s antes às 16:03). Na última
+	// faixa do lado, perto do fim, essa captura nova já é o fim do lado; a faixa que o
+	// identity continua mostrando, com a captura velha, não volta a contar como tocando.
+	// Medido no Pi 5 em 2026-10-30: 15:36:51 e 16:03:12, os dois fins de lado do dia.
+	if np.lastWasEnd && pb.Epoch != 0 && st.Recognition.Epoch > pb.Epoch {
+		np.endedEpoch = pb.Epoch
+	}
+	if pb.Active && pb.Title != "" && pb.Epoch != np.endedEpoch {
 		in.Playing = true
 		in.Artist, in.Title, in.Position = pb.Artist, pb.Title, pb.TrackPosition
 		left := -1
@@ -271,9 +287,9 @@ func (np *nowPlaying) read(now time.Time) info {
 			in.Side, in.SideTrack, in.SideTracks, in.SideLeft = sideOf(np.tracks, pb.TrackPosition, left)
 		}
 		np.lastWasEnd = in.SideTrack > 0 && in.SideTrack == in.SideTracks && left >= 0 && left <= sideEndNear
-		np.sideEndAt = time.Time{}
+		np.sideEndAt, np.endedEpoch = time.Time{}, 0
 	} else if np.lastWasEnd || (!np.sideEndAt.IsZero() && now.Sub(np.sideEndAt) < sideEndHold) {
-		// A última faixa do lado acabou e o reconhecimento parou: "Flip the record".
+		// A última faixa do lado acabou (captura nova ou reconhecimento parado): "Flip the record".
 		if np.sideEndAt.IsZero() {
 			np.sideEndAt = now
 			log.Printf("side %s ended", np.last.Side)

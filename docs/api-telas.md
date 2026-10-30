@@ -24,7 +24,8 @@ ignora o bit 0, e uma que só tem o VU ignora o bit 1.
 ```
 
 - `versão` = 1. O Pico ignora pacotes de outra versão.
-- `flags`: bit 0 = tocando agora; bit 1 = o lado acabou (mostra "Flip the record").
+- `flags`: bit 0 = tocando agora; bit 1 = o lado acabou. É o fato: a fonte o repete enquanto valer. Quanto tempo
+  mostrar "Flip the record" é decisão do Pico (1 min, `screens.FLIP_MS`).
 - Os campos vêm sempre nesta ordem, separados pelo byte 0x1F. **Campo vazio = não se sabe**: a tela que depende dele
   não aparece, e as outras continuam.
 - Texto só em ASCII de `" "` a `"}"`, sem `"\"` (a ROM do display não tem acentos; nela `"\"` vira `"¥"` e `"~"` vira
@@ -65,6 +66,6 @@ Sem pacote por 15 s, o Pico descarta os dados e volta à tela do amp.
 | artista, música, faixa no disco, posição, duração | groove-identity `GET /status` → `playback` (`artist`, `title`, `track_position`, `position_ms`, `duration_ms`), a cada 1 s |
 | lado, faixa no lado, tempo do lado | a letra da `track_position` e a lista de faixas do disco: `album_programme.release_source` / `release_id` → groove-catalog `GET /catalog/library/releases/{source}/{id}/tracks` (`track_position`, `duration_ms`), uma vez por disco |
 | agulha | groove-catalog `GET /catalog/stylus` → `metrics.stylus_hours_total`, `metrics.wear_percent`, a cada 10 min; vazio se `active` for falso |
-| lado acabou | a última faixa do lado chegou ao fim e o reconhecimento parou (`playback.active` falso); vale até a próxima faixa ou 15 min |
+| lado acabou | na última faixa do lado, a menos de 30 s do fim pela duração do catálogo, o identity abriu uma captura nova (`recognition.epoch` > `playback.epoch`: o listener viu a música acabar) ou parou (`playback.active` falso); vale até a próxima faixa ou 15 min |
 
 Os endereços dos dois serviços são opções da ponte (`-identity`, `-catalog`; padrão `127.0.0.1`).

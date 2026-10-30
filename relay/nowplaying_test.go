@@ -153,9 +153,16 @@ func (f *fakeGroove) server() *httptest.Server {
 }
 
 func playing(pos string, posMs, durMs int) string {
-	return fmt.Sprintf(`{"playback":{"active":true,"artist":"Pink Floyd","title":"Some Track","track_position":%q,
-		"position_ms":%d,"duration_ms":%d},"album_programme":{"active":true,"release_source":"user","release_id":"dsotm"}}`,
-		pos, posMs, durMs)
+	return playingEpochs(pos, posMs, durMs, 984, 984)
+}
+
+// playingEpochs é o /status com a captura da faixa mostrada (playback) e a de agora
+// (recognition): o fim da música abre uma captura nova antes de o identity largar a faixa.
+func playingEpochs(pos string, posMs, durMs int, playbackEpoch, captureEpoch uint64) string {
+	return fmt.Sprintf(`{"playback":{"active":true,"epoch":%d,"artist":"Pink Floyd","title":"Some Track",
+		"track_position":%q,"position_ms":%d,"duration_ms":%d},"recognition":{"phase":"identifying","epoch":%d},
+		"album_programme":{"active":true,"release_source":"user","release_id":"dsotm"}}`,
+		playbackEpoch, pos, posMs, durMs, captureEpoch)
 }
 
 func TestNowPlayingRead(t *testing.T) {
@@ -197,6 +204,29 @@ func TestNowPlayingRead(t *testing.T) {
 	}
 	if in = np.read(now.Add(21*time.Second + sideEndHold)); in.SideEnd {
 		t.Error("side end should expire")
+	}
+
+	// A música da última faixa acaba antes da duração do catálogo (Exodus, 2026-10-30): o
+	// identity abre a captura do sulco final e ainda mostra a faixa. O lado acabou ali.
+	g.status = playingEpochs("A5", 260000, 284000, 984, 984)
+	np.read(now.Add(30 * time.Minute))
+	g.status = playingEpochs("A5", 272000, 284000, 984, 993)
+	if in = np.read(now.Add(30*time.Minute + 12*time.Second)); in.Playing || !in.SideEnd || in.Side != "A" {
+		t.Fatalf("new capture on the last track: %+v", in)
+	}
+	g.status = playingEpochs("A5", 299000, 284000, 984, 993)
+	if in = np.read(now.Add(30*time.Minute + 39*time.Second)); in.Playing || !in.SideEnd {
+		t.Errorf("the old track must not come back while its capture is stale: %+v", in)
+	}
+	g.status = playingEpochs("B1", 3000, 382000, 995, 995)
+	if in = np.read(now.Add(40 * time.Minute)); !in.Playing || in.SideEnd || in.Position != "B1" {
+		t.Errorf("next side: %+v", in)
+	}
+
+	// Uma captura nova no meio do lado (troca de faixa) não é fim de lado.
+	g.status = playingEpochs("A2", 150000, 163000, 1000, 1001)
+	if in = np.read(now.Add(50 * time.Minute)); !in.Playing || in.SideEnd {
+		t.Errorf("track change mid-side: %+v", in)
 	}
 
 	// Parou no meio do lado: só "não tocando".

@@ -158,6 +158,17 @@ s.configure(cfg(mode="fixed", clock=False))
 check(s.pick(400, True, False) is None, "standby sem o relógio: a tela do amp")
 check(s.pick(400 + info.STALE_MS, False, True) == "vu", "sem dados: o VU, se tiver música")
 
+i, s = make(mode="fixed")
+ended = packet(["Pink Floyd", "", "", "", "", "A", "5", "5", "0", "312", "62"], playing=False, side_end=True)
+shown = {}
+for t in range(0, 90000, 1000):
+    if t % 5000 == 0:                  # a ponte repete "o lado acabou" a cada 5 s
+        i.feed(ended, t)
+    shown[t] = s.pick(t, False, False)
+check(shown[0] == "alert" and shown[screens.FLIP_MS - 1000] == "alert", "\"Flip the record\" fica um tempo")
+check(shown[screens.FLIP_MS] is None and shown[89000] is None,
+      "  e depois volta a tela do amp; os pacotes repetidos não recomeçam a contagem")
+
 i, s = make(mode="temp", secs=8, show=["track", "side", "stylus"])
 check(s.vu_allowed(), "temporário: o VU pode entrar")
 i.feed(packet(time_a4(0, 900, title="Money", pos="B1", track="1")), 0)

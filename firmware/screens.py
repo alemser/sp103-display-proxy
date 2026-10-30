@@ -5,7 +5,7 @@ redesenho do controlador). Em ordem:
 
 1. Standby: o relógio, se ligado; senão, a tela do amp (apagada).
 2. Fim do lado (se o aviso estiver ligado): no último minuto, "End of side A" e o tempo;
-   depois que acaba, "Flip the record" piscando.
+   depois que acaba, "Flip the record" piscando por FLIP_MS, e então a tela do amp.
 3. Modo fixo: a tela escolhida, o tempo todo enquanto toca. O VU não entra.
 4. Modo temporário: a cada faixa nova, as telas marcadas em sequência, "secs" cada uma
    (a da agulha só no começo de um lado). Depois o VU, se ligado; senão, a tela do amp.
@@ -21,6 +21,7 @@ import vu as vu_meter
 
 KINDS = ("track", "pos", "side", "stylus")
 ALERT_S = 60                    # o aviso de fim do lado começa no último minuto
+FLIP_MS = 60000                 # escolhido: "Flip the record" fica 1 min; o disco parado não pede mais
 BLINK_MS = (1000, 500)          # "Flip the record": aceso, apagado
 SCROLL_PAUSE_MS = 2000          # nome longo: parado 2 s, depois anda
 SCROLL_STEP_MS = 350            # uma letra a cada 0,35 s
@@ -158,7 +159,10 @@ class Screens:
             self.seq_at = now
         if cfg["alert"] and info.data["side"] is not None:
             left = info.side_left(now)
-            if info.side_end or (info.playing and left is not None and left < ALERT_S):
+            if info.side_end:
+                if time.ticks_diff(now, info.side_end_at) < FLIP_MS:
+                    return "alert"
+            elif info.playing and left is not None and left < ALERT_S:
                 return "alert"
         if not info.playing:
             return "vu" if vu_active else None
