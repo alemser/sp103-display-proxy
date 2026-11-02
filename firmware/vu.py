@@ -27,7 +27,8 @@ Vu.glyphs, e ao sair o proxy.py grava de volta os do controlador:
 Escala (names.py): o REC OUT chega em níveis bem diferentes conforme a fonte (medido em
 2026-10-29 no Pi 5: DAB perto de -30 dBFS, o vinil perto de -11). Na escala automática,
 o topo fica AUTO_HEADROOM dB acima do quadro mais alto: sobe na hora e, com música, desce
-AUTO_FALL_DB_S; o piso fica AUTO_SPAN dB abaixo do topo. Na manual, piso e topo são fixos.
+AUTO_FALL_DB_S; o piso fica AUTO_SPAN dB abaixo do topo. A página só tem a automática; a
+manual (piso e topo fixos, "auto": False) ficou para os testes, que precisam da escala parada.
 
 A barra sobe na hora e a cheia esvazia em FALL_S. O pico fica parado 1 s e cai a escala
 inteira em PEAK_FALL_S. Acima de -1 dBFS (o clip de verdade, não o topo) o clip acende
@@ -170,7 +171,7 @@ class Vu:
         self._ruler = " " * 16
 
     def configure(self, cfg):
-        """cfg = names.json "vu": {"on", "auto", "floor", "top", "layout", "relay"}."""
+        """cfg = names.json "vu": {"on", "auto", "layout", "relay"} (+ "floor" e "top" sem "auto")."""
         self.on = cfg["on"]
         self.layout = cfg["layout"]
         self.glyphs = {"bars": GLYPHS, "deck": DECK_GLYPHS, "scale": SCALE_GLYPHS,

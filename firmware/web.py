@@ -5,8 +5,7 @@
     GET /events   Server-Sent Events: um "data: {json}" a cada mudança
     GET /names    os textos personalizados (nomes das entradas e telas de inicialização)
     PUT /names    troca os textos: {"inputs": {"TUNER": "Rega Planar 2"}, "boot": [...], "about": [...],
-                  "vu": {"on": true, "auto": true, "floor": -40, "top": 0, "layout": "bars",
-                         "relay": "192.168.178.105"},
+                  "vu": {"on": true, "layout": "bars", "relay": "192.168.178.105"},
                    "info": {"on": true, "mode": "temp", ...}}      (telas de informação)
                   (texto vazio = original; ver names.py)
     outras        rotas extras, por prefixo: routes={"/update": ota.handle, "/bus": log.handle}
@@ -139,21 +138,20 @@ function loadNames(){fetch("/names").then(r=>r.json()).then(d=>{const c=d.config
  (amp[k]?'<span class="amp">'+amp[k]+'</span>':'')).join("")+
  '<b>Startup</b><span></span>'+["boot","about"].map(s=>[0,1].map(n=>
  row(s+" "+(n+1),s+":"+n,d.defaults[s][n],c[s][n])).join("")).join("")+
- '<b>Display</b><span></span><label for="vuon">VU meter</label><label class="chk"><input type="checkbox" '+
- 'id="vuon" name="vu:on"'+(c.vu.on?" checked":"")+'> only while music plays</label>'+
- '<label for="vuau">VU scale</label><label class="chk"><input type="checkbox" id="vuau" name="vu:auto"'+
- (c.vu.auto?" checked":"")+'> automatic (follows the music)</label>'+
- '<label for="vuly">VU layout</label><select id="vuly" name="vu:layout">'+VL.map(([k,n])=>'<option value="'+k+'"'+
- (c.vu.layout==k?" selected":"")+'>'+n+'</option>').join("")+'</select><canvas id="vupv" width="404" height="74" '+
- 'aria-label="VU layout preview"></canvas><span class="amp">preview with made-up music, automatic scale</span>'+
- '<label for="vufl">Manual floor (dB)</label><input type="number" id="vufl" name="vu:floor" min="-60" max="-10" '+
- 'step="1" value="'+c.vu.floor+'"><label for="vutp">Manual top (dB)</label><input type="number" id="vutp" '+
- 'name="vu:top" min="-30" max="0" step="1" value="'+c.vu.top+'"><label for="vuip">VU source (IP)</label><input id="vuip" name="vu:relay" '+
+ '<b>Display</b><span></span><label for="vuly">VU meter</label><select id="vuly" name="vu:layout">'+
+ [["off","Disabled"],...VL].map(([k,n])=>'<option value="'+k+'"'+((c.vu.on?c.vu.layout:"off")==k?" selected":"")+'>'+n+
+ '</option>').join("")+'</select><canvas class="vp" id="vupv" width="404" height="74" aria-label="VU layout preview"></canvas>'+
+ '<span class="amp vp">preview with made-up music; on the amp, only while music plays</span>'+
+ '<label for="vuip">VU source (IP)</label><input id="vuip" name="vu:relay" '+
  'value="'+q(c.vu.relay)+'"><span class="amp">'+vuText(d.vu)+'</span>'+infoForm(c.info,d)+'<button>Save</button>';
- VG=d.vu_glyphs||null;ly=c.vu.layout;nf.querySelector("#vuly").onchange=e=>{ly=e.target.value};
+ VG=d.vu_glyphs||null;ly=VLAST=c.vu.layout;nf.querySelector("#vuly").onchange=vpick;vpick();
  nf.querySelector("#inmo").onchange=imode;imode()})}
 // VU layout preview: the same drawing as vu.py, fed with made-up music on the automatic scale
 const VL=[["bars","Thin bars"],["deck","Cassette deck"],["scale","Printed scale"],["kx393","Yamaha KX-393"]];
+let VLAST="bars";   // o layout salvo: "Disabled" desliga o VU e guarda o layout para quando voltar
+// "Disabled" esconde a simulação; um layout passa a ser o simulado
+function vpick(){const v=nf.querySelector("#vuly").value;if(v!="off")ly=v;
+ nf.querySelectorAll(".vp").forEach(e=>e.style.display=v=="off"?"none":"")}
 const FT={L:[16,16,16,16,16,16,31],R:[30,17,17,30,20,18,17],"0":[14,17,19,21,25,17,14],"1":[4,12,4,4,4,4,14],
  "2":[14,17,1,2,4,8,31],"3":[31,2,4,2,1,17,14],"4":[2,6,10,18,31,2,2],"6":[6,8,16,30,17,17,14],
  "7":[31,1,2,4,8,8,8],"8":[14,17,17,14,17,17,14]};
@@ -194,7 +192,8 @@ function vuText(v){if(v&&v.error)return"VU turned off after an error: "+v.error;
  if(v.last_frame_ms===null||v.last_frame_ms>1000)return"no data from the VU source";
  return v.music?"amp screen for a moment":"waiting for music"}
 // Info screens (screens.py): what is playing, from the source in docs/api-telas.md
-const IK=[["track","Artist and title"],["pos","Track and position"],["side","Time left on the side"],["stylus","Stylus hours"]];
+const IK=[["track","Artist and title"],["pos","Track and position"],["side","Time left on the side"],["stylus","Stylus hours"],
+ ["quality","Bluetooth quality"]];
 const chk=(id,name,on,text)=>'<label class="chk"><input type="checkbox" id="'+id+'" name="'+name+'"'+(on?" checked":"")+'> '+text+'</label>';
 function infoForm(c,d){return'<b>Info screens</b><span></span><label for="inon">Info screens</label>'+
  chk("inon","info:on",c.on,"show what is playing")+
@@ -202,7 +201,7 @@ function infoForm(c,d){return'<b>Info screens</b><span></span><label for="inon">
  '>Temporary: when the track changes</option><option value="fixed"'+(c.mode=="fixed"?" selected":"")+'>Fixed: one screen all the time</option></select>'+
  '<label class="mt" for="inse">Seconds per screen</label><input class="mt" type="number" id="inse" name="info:secs" min="3" max="60" step="1" value="'+c.secs+'">'+
  '<label class="mt">Screens</label><span class="mt">'+IK.map(([k,n])=>chk("ins"+k,"info:show:"+k,c.show.includes(k),
-  n+(k=="stylus"?" (when a side starts)":""))).join("")+'</span>'+
+  n+(k=="stylus"?" (when a side starts)":k=="quality"?" (when Bluetooth starts on DAB)":""))).join("")+'</span>'+
  '<span class="amp mt">each screen in turn when the track changes; then the VU, if it is on</span>'+
  '<label class="mf" for="infx">Screen</label><select class="mf" id="infx" name="info:fixed">'+IK.map(([k,n])=>'<option value="'+k+'"'+
   (c.fixed==k?" selected":"")+'>'+n+'</option>').join("")+'</select><span class="amp mf">all the time while playing; the VU is not shown</span>'+
@@ -219,14 +218,15 @@ function infoForm(c,d){return'<b>Info screens</b><span></span><label for="inon">
 // Only the fields of the chosen mode: temporary (.mt) or fixed (.mf)
 function imode(){const f=nf.querySelector("#inmo").value=="fixed";
  nf.querySelectorAll(".mt").forEach(e=>e.style.display=f?"none":"");nf.querySelectorAll(".mf").forEach(e=>e.style.display=f?"":"none")}
-function infoText(i,s){if(s&&s.error)return"Info screens turned off after an error: "+s.error;if(!i||!i.on)return"Info screens off";
+function infoText(i,s){if(s&&s.error)return"Info screens turned off after an error: "+s.error;if(!s||!s.on)return"Info screens off";
  if(i.last_packet_ms===null||i.last_packet_ms>15000)return"no data from the info source";
- const now=i.playing&&i.title?"playing: "+(i.artist?i.artist+" – ":"")+i.title:i.side_end?"side ended":"nothing playing";
+ const now=i.playing&&i.title?"playing: "+(i.artist?i.artist+" – ":"")+i.title:i.stream?"streaming: "+i.stream:
+  i.side_end?"side ended":"nothing playing";
  return now+(s&&s.showing?" - on the display: "+s.showing:"")}
 loadNames();
 nf.onsubmit=e=>{e.preventDefault();const b={inputs:{},boot:["",""],about:["",""],vu:{},info:{show:[],turntable:[]}};
  for(const i of nf.querySelectorAll("input,select")){const [g,k,x]=i.name.split(":");
-  if(g=="i")b.inputs[k]=i.value;else if(g=="vu")b.vu[k]=k=="on"||k=="auto"?i.checked:k=="floor"||k=="top"?Number(i.value):i.value;
+  if(g=="i")b.inputs[k]=i.value;else if(g=="vu"){if(k=="layout"){b.vu.on=i.value!="off";b.vu.layout=b.vu.on?i.value:VLAST}else b.vu[k]=i.value}
   else if(g=="info"){if(k=="show"||k=="turntable"){if(i.checked)b.info[k].push(x)}
    else b.info[k]=["on","alert","clock","scroll","eu_dst"].includes(k)?i.checked:k=="secs"||k=="utc_offset"?Number(i.value):i.value}
   else b[g][+k]=i.value}

@@ -45,8 +45,13 @@ ignora o bit 0, e uma que só tem o VU ignora o bit 1.
 | 8 | tempo até o fim do lado (s) | `608` | Side, fim do lado |
 | 9 | horas da agulha | `312` | Stylus |
 | 10 | desgaste da agulha (%) | `62` | Stylus |
+| 11 | streaming tocando: `airplay` ou `bluetooth` (vazio = nenhum) | `bluetooth` | nome da entrada DAB, Bluetooth quality |
+| 12 | codec do streaming | `SBC` | Bluetooth quality |
+| 13 | sample rate (Hz) | `44100` | Bluetooth quality |
+| 14 | bits por amostra | `16` | Bluetooth quality |
+| 15 | bitrate (kbit/s) | `328` | Bluetooth quality |
 
-Um pacote fica com uns 60 a 120 bytes. Campos a mais no fim são ignorados (para versões futuras com campos novos).
+Um pacote fica com uns 60 a 150 bytes. Campos a mais no fim são ignorados (para versões futuras com campos novos).
 
 ### Quando mandar
 
@@ -66,6 +71,8 @@ Sem pacote por 15 s, o Pico descarta os dados e volta à tela do amp.
 | artista, música, faixa no disco, posição, duração | groove-identity `GET /status` → `playback` (`artist`, `title`, `track_position`, `position_ms`, `duration_ms`), a cada 1 s |
 | lado, faixa no lado, tempo do lado | a letra da `track_position` e a lista de faixas do disco: `album_programme.release_source` / `release_id` → groove-catalog `GET /catalog/library/releases/{source}/{id}/tracks` (`track_position`, `duration_ms`), uma vez por disco |
 | agulha | groove-catalog `GET /catalog/stylus` → `metrics.stylus_hours_total`, `metrics.wear_percent`, a cada 10 min; vazio se `active` for falso |
+| streaming, codec, sample rate, bits, bitrate | o arquivo de transporte do groove-detector, `/tmp/groove-transport.json` (`source`, `active`, `codec`, `samplerate`, `bitdepth`, `bitrate`), a cada 1 s; vazio sem arquivo ou com `active` falso. O bitrate só existe no Bluetooth com SBC, AAC ou aptX |
 | lado acabou | na última faixa do lado, a menos de 30 s do fim pela duração do catálogo, o identity abriu uma captura nova (`recognition.epoch` > `playback.epoch`: o listener viu a música acabar) ou parou (`playback.active` falso); vale até a próxima faixa ou 15 min |
 
-Os endereços dos dois serviços são opções da ponte (`-identity`, `-catalog`; padrão `127.0.0.1`).
+Os endereços dos dois serviços e o arquivo são opções da ponte (`-identity`, `-catalog`, padrão `127.0.0.1`;
+`-transport`, padrão `/tmp/groove-transport.json`).

@@ -74,13 +74,13 @@ def cfg(**kw):
 
 # --- names.py: a configuração do VU ---------------------------------------
 default = names.validate({})["vu"]
-check(default == {"on": False, "auto": True, "floor": -40, "top": 0, "layout": "bars",
-                  "relay": "192.168.178.105"},
+check(default == {"on": False, "auto": True, "layout": "bars", "relay": "192.168.178.105"},
       "padrão: VU desligado, escala automática, barras finas")
-check(names.validate({"vu": {"on": True, "floor": -30}})["vu"]["floor"] == -30, "piso configurável")
+old = names.validate({"vu": {"on": True, "auto": False, "floor": -45, "top": -20}})["vu"]
+check(old == {"on": True, "auto": True, "layout": "bars", "relay": "192.168.178.105"},
+      "names.json antigo com a escala manual: aceito, e a escala fica automática")
 check(names.validate({"vu": {"on": True}})["inputs"] == {}, "só 'vu' não vira o formato antigo")
-for bad, what in (({"floor": -70}, "piso fora da faixa"), ({"floor": "x"}, "piso não numérico"),
-                  ({"on": "yes"}, "on não booleano"), ({"auto": 1}, "auto não booleano"), ({"relay": "oceano-0001.local"}, "nome em vez de IP"),
+for bad, what in (({"on": "yes"}, "on não booleano"), ({"relay": "oceano-0001.local"}, "nome em vez de IP"),
                   ({"relay": "192.168.1.300"}, "IP inválido")):
     try:
         names.validate({"vu": bad})
@@ -122,14 +122,6 @@ check(all(c >= 0 for c in v._ticks) and len(v._ticks) == 3, "piso -20: só as ma
 v.configure(cfg(floor=-45, top=-20))
 check(v._px(-45) == 0 and v._px(-20) == 75 and v._px(-10) == 75, "topo -20: a barra enche em -20 dBFS")
 check(v._ticks == tuple((v._px(-20 + d) - 1) // 5 for d in (-20, -10, -6, -3)), "topo -20: marcas a -20..-3 dB do topo")
-check(names.validate({"vu": {"floor": -45, "top": -20}})["vu"]["top"] == -20, "topo configurável")
-check(names.validate({})["vu"]["top"] == 0, "topo padrão: 0 dBFS")
-for bad in ({"top": 5}, {"top": -40}, {"floor": -25, "top": -20}, {"top": True}):
-    try:
-        names.validate({"vu": bad})
-        check(False, "recusa %r" % bad)
-    except ValueError:
-        check(True, "recusa %r" % bad)
 check(all(len(g) == 64 for g in (vu.GLYPHS, vu.DECK_GLYPHS, vu.SCALE_GLYPHS, vu.KX_GLYPHS)), "8 desenhos de 8 linhas")
 check(names.VU_LAYOUTS == vu.LAYOUTS, "names.py e vu.py conhecem os mesmos layouts")
 check(names.validate({})["vu"]["layout"] == "bars", "layout padrão: barras finas")

@@ -14,14 +14,23 @@ redesenho do controlador). Em ordem:
    A tela da agulha só aparece nas entradas do toca-discos ("turntable": PHONO, TUNER...).
 5. Sem música ou sem dados: o VU (que só aparece com música) ou a tela do amp.
 
-Os textos são em inglês, como os do amp. As barras usam os desenhos do VU (vu.GLYPHS).
+Bluetooth na entrada do streaming (amp_state.STREAMING_INPUT): a tela "quality" (codec,
+sample rate, bits, bitrate) entra por "secs" quando o Bluetooth começa ou a qualidade muda,
+se estiver marcada; no modo fixo, o tempo todo. Ela vem antes do passo 2 (o aviso de fim do
+lado é só das entradas do toca-discos). O nome do streaming na tela do amp ("AirPlay",
+"Bluetooth") é o stream_label(), que o proxy.py passa ao names.rewrite().
+
+Os textos são em inglês, como os do amp. As barras usam os desenhos do VU (vu.GLYPHS); o
+desenho 7 (o clip do VU, que as telas não usam) vira o símbolo do Bluetooth.
 """
 
 import time
 
 import vu as vu_meter
+from amp_state import STREAMING_INPUT
 
-KINDS = ("track", "pos", "side", "stylus")
+KINDS = ("track", "pos", "side", "stylus", "quality")
+TRACK_KINDS = KINDS[:4]         # as que entram em sequência a cada faixa nova
 ALERT_S = 60                    # o aviso de fim do lado começa no último minuto
 FLIP_MS = 60000                 # escolhido: "Flip the record" fica 1 min; o disco parado não pede mais
 BLINK_MS = (1000, 500)          # "Flip the record": aceso, apagado
@@ -31,7 +40,10 @@ STYLUS_WARN = 90                # % de desgaste: "Replace stylus"
 DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 MIN_YEAR = 2025                 # antes disso, o relógio do Pico ainda não foi acertado
-GLYPHS = vu_meter.GLYPHS
+BT = 7                          # o código do símbolo do Bluetooth (ᛒ) nos desenhos próprios
+BT_GLYPH = bytes((0x04, 0x06, 0x15, 0x0E, 0x0E, 0x15, 0x06, 0x04))
+GLYPHS = vu_meter.GLYPHS[:8 * BT] + BT_GLYPH
+STREAM_NAMES = {"airplay": "AirPlay", "bluetooth": chr(BT) + " Bluetooth"}
 
 
 def mmss(s):
@@ -58,6 +70,18 @@ def roll(text, width, ms):
     k = ms % period
     off = 0 if k < SCROLL_PAUSE_MS else (k - SCROLL_PAUSE_MS) // SCROLL_STEP_MS
     return (loop + loop)[off:off + width]
+
+
+def khz(rate):
+    """44100 -> "44.1kHz", 48000 -> "48kHz"."""
+    if rate % 1000 == 0:
+        return "%dkHz" % (rate // 1000)
+    return "%d.%dkHz" % (rate // 1000, rate % 1000 // 100)
+
+
+def with_bt_glyph(cgram):
+    """Os desenhos do controlador com o símbolo do Bluetooth no 7 (para a tela do amp)."""
+    return bytes(cgram[:8 * BT]) + BT_GLYPH
 
 
 def bar(fraction, cells):
@@ -104,6 +128,8 @@ class Screens:
         self.seq = []
         self.seq_at = 0
         self.seen_track = 0
+        self.seen_stream = 0
+        self.quality_at = None          # quando a tela "quality" entrou (modo temporário)
         self.key = None
         self.since = 0
         self.input = None               # a entrada do amp agora ("TUNER"), do amp_state
@@ -114,6 +140,8 @@ class Screens:
         self.cfg = cfg
         self.seq = []
         self.seen_track = self.info.track_seq
+        self.seen_stream = self.info.stream_seq
+        self.quality_at = None
         self.error = None
 
     def vu_allowed(self):
@@ -130,7 +158,17 @@ class Screens:
             return d["side"] is not None and self.info.side_left(now) is not None
         if kind == "stylus":
             return d["stylus_hours"] is not None and self.input in self.cfg["turntable"]
+        if kind == "quality":
+            return d["stream"] == "bluetooth" and self.input == STREAMING_INPUT \
+                and (d["codec"] is not None or d["sample_rate"] is not None)
         return False
+
+    def stream_label(self, now):
+        """O nome do streaming tocando ("AirPlay", "ᛒ Bluetooth"), para a linha da entrada
+        na tela do amp, ou None. Vale com ou sem as telas ligadas."""
+        if not self.info.fresh(now):
+            return None
+        return STREAM_NAMES.get(self.info.data["stream"])
 
     def _clock_time(self):
         t = time.time()
@@ -155,9 +193,19 @@ class Screens:
             return "clock" if cfg["on"] and cfg["clock"] and self._clock_time() else None
         if not cfg["on"] or not info.fresh(now):
             return "vu" if vu_active else None
+        quality = self._has("quality", now)
+        if info.stream_seq != self.seen_stream:
+            self.seen_stream = info.stream_seq
+            self.quality_at = now if quality and "quality" in cfg["show"] else None
+        if quality and cfg["mode"] == "fixed" and cfg["fixed"] == "quality":
+            return "quality"
+        if quality and cfg["mode"] == "temp" and self.quality_at is not None:
+            if time.ticks_diff(now, self.quality_at) < cfg["secs"] * 1000:
+                return "quality"
+            self.quality_at = None
         if info.track_seq != self.seen_track:
             self.seen_track = info.track_seq
-            self.seq = [k for k in KINDS if k in cfg["show"] and (k != "stylus" or info.side_start)]
+            self.seq = [k for k in TRACK_KINDS if k in cfg["show"] and (k != "stylus" or info.side_start)]
             self.seq_at = now
         if cfg["alert"] and info.data["side"] is not None and self.input in cfg["turntable"]:
             left = info.side_left(now)
@@ -210,6 +258,12 @@ class Screens:
             l1 = "Replace stylus" if wear is not None and wear >= STYLUS_WARN \
                 else lr("Stylus", "%d h" % d["stylus_hours"])
             l2 = (bar(wear / 100, 12) + "%4s" % ("%d%%" % wear)) if wear is not None else ""   # sem rjust no MicroPython
+        elif key == "quality":
+            l1 = lr(STREAM_NAMES["bluetooth"], d["codec"] or "")
+            fmt = [khz(d["sample_rate"])] if d["sample_rate"] else []
+            if d["bit_depth"]:
+                fmt.append("%db" % d["bit_depth"])
+            l2 = lr(" ".join(fmt), "%dk" % d["bitrate"] if d["bitrate"] else "")
         elif key == "clock":
             t = self._clock_time()
             if t is None:

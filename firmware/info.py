@@ -24,8 +24,10 @@ RESYNC_S = 2
 FLAG_PLAYING = 1
 FLAG_SIDE_END = 2
 FIELDS = ("artist", "title", "position", "elapsed", "duration", "side", "side_track", "side_tracks",
-          "side_left", "stylus_hours", "stylus_wear")
-NUMBERS = ("elapsed", "duration", "side_track", "side_tracks", "side_left", "stylus_hours", "stylus_wear")
+          "side_left", "stylus_hours", "stylus_wear", "stream", "codec", "sample_rate", "bit_depth", "bitrate")
+NUMBERS = ("elapsed", "duration", "side_track", "side_tracks", "side_left", "stylus_hours", "stylus_wear",
+           "sample_rate", "bit_depth", "bitrate")
+STREAM_FIELDS = ("stream", "codec", "sample_rate", "bit_depth", "bitrate")
 
 
 class Info:
@@ -43,6 +45,7 @@ class Info:
         self.data = {name: None for name in FIELDS}
         self.track_seq = 0              # muda a cada faixa nova (as telas temporárias recomeçam)
         self.side_start = False         # a faixa de agora é a primeira do lado
+        self.stream_seq = 0             # muda quando o streaming (AirPlay, Bluetooth) ou a qualidade muda
         self._base = 0                  # ticks_ms em que elapsed e side_left valiam o que está em data
 
     def configure(self, on, source):
@@ -103,6 +106,8 @@ class Info:
                     v = None
             data[name] = v
         old = self.data
+        if any(data[k] != old[k] for k in STREAM_FIELDS):
+            self.stream_seq += 1
         playing = bool(flags & FLAG_PLAYING)
         if playing and (data["title"], data["position"], data["artist"]) != \
                 (old["title"], old["position"], old["artist"]):
@@ -161,4 +166,5 @@ class Info:
     def status(self, now):
         age = None if self.last_packet is None else time.ticks_diff(now, self.last_packet)
         return {"on": self.on, "packets": self.packets, "last_packet_ms": age, "playing": self.playing,
-                "side_end": self.side_end, "artist": self.data["artist"], "title": self.data["title"]}
+                "side_end": self.side_end, "artist": self.data["artist"], "title": self.data["title"],
+                "stream": self.data["stream"]}

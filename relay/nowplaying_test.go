@@ -5,6 +5,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -81,12 +83,54 @@ func TestInfoPacket(t *testing.T) {
 	if string(p[:2]) != "NP" || p[2] != npVersion || p[3] != npFlagPlaying {
 		t.Fatalf("header %v", p[:4])
 	}
-	want := "Pink Floyd\x1fTime\x1fA4\x1f161\x1f421\x1fA\x1f4\x1f5\x1f544\x1f\x1f"
+	want := "Pink Floyd\x1fTime\x1fA4\x1f161\x1f421\x1fA\x1f4\x1f5\x1f544" + strings.Repeat("\x1f", 7)
 	if string(p[4:]) != want {
 		t.Fatalf("fields %q", p[4:])
 	}
-	if f := strings.Split(string(p[4:]), fieldDivider); len(f) != 11 {
+	if f := strings.Split(string(p[4:]), fieldDivider); len(f) != 16 {
 		t.Fatalf("%d fields", len(f))
+	}
+	in.stream = stream{Source: streamBluetooth, Codec: "SBC", SampleRateHz: 44100, BitDepth: 16, BitrateK: 328}
+	if f := strings.Split(string(in.packet()[4:]), fieldDivider); strings.Join(f[11:], ",") != "bluetooth,SBC,44100,16,328" {
+		t.Fatalf("stream fields %q", f[11:])
+	}
+}
+
+// The transport file as the groove-detector writes it: AirPlay read on oceano-0000 on
+// 2026-11-02; Bluetooth as in its docs/contracts.md, with the bitrate it now adds.
+func TestReadStream(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	airplay := write("airplay.json", `{"schema_version": 1, "source": "airplay", "active": true,
+		"title": "Who's That", "artist": "The War on Drugs", "position_ms": 126, "duration_ms": 314732,
+		"samplerate": "44.1 kHz", "bitdepth": "16 bit"}`)
+	bt := write("bt.json", `{"schema_version": 1, "source": "bluetooth", "active": true, "title": "So What",
+		"codec": "SBC", "samplerate": "44.1 kHz", "bitdepth": "16 bit", "bitrate": "328 kbps"}`)
+	stopped := write("stopped.json", `{"schema_version": 1, "source": "bluetooth", "active": false}`)
+	for _, tc := range []struct {
+		path string
+		want stream
+	}{
+		{airplay, stream{Source: streamAirPlay, SampleRateHz: 44100, BitDepth: 16, BitrateK: -1}},
+		{bt, stream{Source: streamBluetooth, Codec: "SBC", SampleRateHz: 44100, BitDepth: 16, BitrateK: 328}},
+		{stopped, unknownStream()},
+		{filepath.Join(dir, "missing.json"), unknownStream()},
+		{write("line.json", `{"source": "line", "active": true}`), unknownStream()},
+	} {
+		if got := readStream(tc.path); got != tc.want {
+			t.Errorf("readStream(%s) = %+v, want %+v", filepath.Base(tc.path), got, tc.want)
+		}
+	}
+	for in, want := range map[string]int{"96 kHz": 96000, "22050 Hz": 22050, "": -1, "fast": -1, "44.1 MHz": -1} {
+		if got := parseUnit(in, map[string]float64{"kHz": 1000, "Hz": 1}); got != want {
+			t.Errorf("parseUnit(%q) = %d, want %d", in, got, want)
+		}
 	}
 }
 
@@ -169,7 +213,7 @@ func TestNowPlayingRead(t *testing.T) {
 	g := &fakeGroove{status: playing("A4", 161000, 421000)}
 	srv := g.server()
 	defer srv.Close()
-	np := newNowPlaying(srv.URL, srv.URL+"/")
+	np := newNowPlaying(srv.URL, srv.URL+"/", filepath.Join(t.TempDir(), "none.json"))
 	now := time.Unix(1000, 0)
 
 	in := np.read(now)
@@ -239,12 +283,12 @@ func TestNowPlayingRead(t *testing.T) {
 }
 
 func TestNowPlayingServicesDown(t *testing.T) {
-	np := newNowPlaying("http://127.0.0.1:1", "http://127.0.0.1:1")
+	np := newNowPlaying("http://127.0.0.1:1", "http://127.0.0.1:1", filepath.Join(t.TempDir(), "none.json"))
 	in := np.read(time.Unix(1000, 0))
 	if in.Playing || in.Title != "" || in.StylusHours != -1 {
 		t.Errorf("services down: %+v", in)
 	}
-	if p := in.packet(); string(p[4:]) != strings.Repeat(fieldDivider, 10) {
+	if p := in.packet(); string(p[4:]) != strings.Repeat(fieldDivider, 15) {
 		t.Errorf("empty packet %q", p[4:])
 	}
 }
@@ -260,7 +304,7 @@ func TestPumpInfoEndToEnd(t *testing.T) {
 	}
 	r := newRelay()
 	go r.serveSubscriptions(conn)
-	go r.pumpInfo(newNowPlaying(srv.URL, srv.URL), conn)
+	go r.pumpInfo(newNowPlaying(srv.URL, srv.URL, filepath.Join(t.TempDir(), "none.json")), conn)
 
 	pico, err := net.DialUDP("udp", nil, conn.LocalAddr().(*net.UDPAddr))
 	if err != nil {

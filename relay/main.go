@@ -224,6 +224,7 @@ func main() {
 	gate := flag.String("gate", "/tmp/groove-gate.json", "arquivo do gate do groove-detector")
 	identity := flag.String("identity", "http://127.0.0.1:7071", "groove-identity (o que está tocando)")
 	catalog := flag.String("catalog", "http://127.0.0.1:7073", "groove-catalog (faixas do disco e agulha)")
+	transport := flag.String("transport", "/tmp/groove-transport.json", "arquivo de transporte do groove-detector (AirPlay, Bluetooth)")
 	flag.Parse()
 
 	addr, err := net.ResolveUDPAddr("udp", *listen)
@@ -234,12 +235,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("sp103-vu-relay on udp %s, vu %s, gate %s, identity %s, catalog %s",
-		*listen, *vuSock, *gate, *identity, *catalog)
+	log.Printf("sp103-vu-relay on udp %s, vu %s, gate %s, identity %s, catalog %s, transport %s",
+		*listen, *vuSock, *gate, *identity, *catalog, *transport)
 
 	r := newRelay()
 	go r.watchGate(*gate, 500*time.Millisecond)
 	go r.serveSubscriptions(conn)
-	go r.pumpInfo(newNowPlaying(*identity, *catalog), conn)
+	go r.pumpInfo(newNowPlaying(*identity, *catalog, *transport), conn)
 	r.pumpVU(*vuSock, conn)
 }

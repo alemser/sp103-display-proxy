@@ -79,20 +79,23 @@ amp_until = time.ticks_ms()             # até aqui, a tela do amp tem a vez
 
 
 def configure_feeds(cfg):
-    """Aplica as configurações do VU e das telas. No modo fixo o VU nem pede quadros."""
+    """Aplica as configurações do VU e das telas. No modo fixo o VU nem pede quadros. Os
+    pacotes da fonte vêm sempre, mesmo com as telas desligadas: deles sai o nome do
+    streaming na tela do amp ("AirPlay" no lugar do nome da entrada DAB)."""
     screens.configure(cfg["info"])
     vu_cfg = dict(cfg["vu"])
     vu_cfg["on"] = vu_cfg["on"] and screens.vu_allowed()
     vu.configure(vu_cfg)
-    info.configure(cfg["info"]["on"], cfg["info"]["source"] or cfg["vu"]["relay"])
+    info.configure(True, cfg["info"]["source"] or cfg["vu"]["relay"])
 
 
 configure_feeds(texts)
 
 
 def draw(full=False):
-    """Põe no display do amp a tela do controlador, com os textos personalizados.
-    Só manda o que mudou; full=True resincroniza e reescreve tudo (sem apagar a tela)."""
+    """Põe no display do amp a tela do controlador, com os textos personalizados e o nome
+    do streaming tocando. Só manda o que mudou; full=True resincroniza e reescreve tudo
+    (sem apagar a tela)."""
     global shown_cgram, shown_on, last_full, own
     own = None
     m = bus.lcd
@@ -100,13 +103,17 @@ def draw(full=False):
         lcd.resync()
         shown[0] = shown[1] = shown_cgram = shown_on = None
         last_full = time.ticks_ms()
-    cgram = bytes(m.cgram)
+    line1, line2 = m.lines()
+    label = screens.stream_label(time.ticks_ms())
+    lines = names.rewrite(line1, line2, texts, label)
+    # "ᛒ Bluetooth" usa o desenho 7, que as telas do controlador não usam (só o 0, a caixa).
+    bt = label == screens_mod.STREAM_NAMES["bluetooth"] and lines[1].startswith(label)
+    cgram = screens_mod.with_bt_glyph(m.cgram) if bt else bytes(m.cgram)
     if cgram != shown_cgram:
         for code in range(8):
             lcd.define_char(code, cgram[8 * code:8 * code + 8])
         shown_cgram = cgram
-    line1, line2 = m.lines()
-    for row, text in enumerate(names.rewrite(line1, line2, texts)):
+    for row, text in enumerate(lines):
         if text != shown[row]:
             lcd.write_line(row, text, shown[row])
             shown[row] = text
@@ -223,6 +230,8 @@ async def listen():
                     show_own(key, ms)
             elif own and not key:
                 draw()
+            elif new_info and not own and not bus.pending:
+                draw()                  # o streaming começou ou parou: o nome da entrada muda
         except Exception as e:
             print("screens: turned off after an error:", repr(e))
             vu.error = screens.error = repr(e)

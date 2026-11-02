@@ -34,7 +34,7 @@ Flags: bit 0 = há música; bit 1 = o arquivo do gate foi lido. Sem o arquivo do
 
 1. **VU desligado** na página: tudo como antes. O Pico nem pede os quadros.
 2. **VU ligado, com música e quadros chegando**: L na linha 1, R na linha 2. Coluna 0 = a letra; colunas 1 a 15 = a barra,
-   5 colunas de pixels cada: 75 passos do piso até o topo (escala automática ou manual).
+   5 colunas de pixels cada: 75 passos do piso até o topo (escala automática).
 3. **O controlador desenhou uma tela** (volume, entrada, menu, ligar): a tela do amp aparece na hora e fica 3 s depois do
    último redesenho.
 4. **Sem música, sem quadros por 1 s, ou o display do amp desligado**: tela do amp.
@@ -60,14 +60,13 @@ A página do Pico mostra uma simulação do layout escolhido, com música invent
 
 | Campo | Padrão | Faixa |
 |---|---|---|
-| VU meter | desligado | — |
-| VU scale | automática | automática ou manual |
-| VU layout | barras finas | barras finas, deck de cassete, escala impressa ou Yamaha KX-393 |
-| Manual floor (dB) | −40 | −60 a −10: a barra vazia (só na escala manual) |
-| Manual top (dB) | 0 | −30 a 0: a barra cheia; pelo menos 10 dB acima do piso (só na manual) |
+| VU meter | Disabled | Disabled (desligado), barras finas, deck de cassete, escala impressa ou Yamaha KX-393 |
 | VU source (IP) | 192.168.178.105 (oceano-0001) | um IP; o MicroPython não resolve nomes `.local` |
 
-Fica no `names.json` do Pico, junto com os nomes (`"vu": {"on", "auto", "floor", "top", "layout", "relay"}`). A linha embaixo dos campos diz o
+A escala é sempre a automática (abaixo). Com "Disabled", o layout escolhido antes fica guardado para quando o VU voltar.
+
+Fica no `names.json` do Pico, junto com os nomes (`"vu": {"on", "auto", "layout", "relay"}`; `"auto"` é sempre true, e o
+`"floor"`/`"top"` de um arquivo antigo é ignorado). A linha embaixo dos campos diz o
 que o VU está fazendo: "VU on the display now", "waiting for music", "no data from the VU source"...
 
 **Escala automática (padrão desde 2026-10-29):** o nível do REC OUT muda muito com a fonte. Medido no Pi 5 com
@@ -78,16 +77,13 @@ música varia pouco de um quadro para outro (no vinil, 90 % dos quadros numa fai
 entre a metade e 3/4, mexendo. Sem música o topo fica parado; ele vai de −40 a 0 dB. A página mostra a escala de agora
 ("scale −26 to −6 dB").
 
-**Escala manual:** o REC OUT chega bem abaixo de 0 dBFS (depende do ganho da captura no groove-detector, que não
-deve ser mexido por causa do VU). Medido em 2026-10-29 com música: no oceano-0000 (Pi 5, ganho 25 %) a média ficou em
-−30 dBFS e os picos em −25; no oceano-0001, −40 e −35. Para o Pi 5: piso −45, topo −20. Regra prática: topo uns 5 dB
-acima dos picos, piso uns 15 dB abaixo da média.
+**Escala manual (removida da página em 2026-11-02):** piso e topo fixos, escolhidos à mão. Saiu porque a automática
+acompanha a fonte sozinha; o `vu.py` ainda a aceita (`"auto": false`), mas só os testes a usam.
 
 **L e R iguais:** a placa de captura do oceano-0000 (GeneralPlus USB Audio Device) é mono: só a entrada de microfone,
 1 canal (`/proc/asound/card0/stream0`: `Channels: 1`, `MONO`). O detector repete o mesmo valor nos dois canais, e o R
 do REC OUT provavelmente nem é medido. Com uma captura estéreo de linha (plano: HiFiBerry DAC+ ADC), o VU mostra os
-dois canais sem mudar nada no Pico nem na ponte; só é preciso recalibrar o ganho no groove-detector e acertar o piso e
-o topo de novo.
+dois canais sem mudar nada no Pico nem na ponte; só é preciso recalibrar o ganho no groove-detector.
 
 Se o VU der um erro no Pico, ele se desliga sozinho e o display continua com a tela do amp; a página mostra o erro.
 Diagnóstico em `http://sp103.local/names`, campo `vu` (quadros recebidos, idade do último, música).

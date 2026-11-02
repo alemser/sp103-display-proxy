@@ -218,11 +218,55 @@ check(s.pick(80000, False, True) == "vu" and s.pick(80000, True, False) is None,
 
 # --- names.py: a configuração ------------------------------------------------------
 d = names.validate({})["info"]
-check(d == {"on": False, "mode": "temp", "fixed": "track", "show": ["track", "pos", "side", "stylus"], "secs": 8,
+check(d == {"on": False, "mode": "temp", "fixed": "track", "show": ["track", "pos", "side", "stylus", "quality"], "secs": 8,
             "alert": True, "clock": True, "scroll": True, "utc_offset": 0, "eu_dst": True, "source": "",
             "turntable": ["PHONO", "TUNER"]},
       "padrão: desligadas")
 check(names.INFO_KINDS == screens.KINDS, "names.py e screens.py conhecem as mesmas telas")
+
+# --- streaming: o nome na tela do amp e a tela "quality" ---------------------------
+EMPTY11 = [""] * 11                     # nada do groove-identity: o disco não toca
+bt_sbc = packet(EMPTY11 + ["bluetooth", "SBC", "44100", "16", "328"], playing=False)
+airplay = packet(EMPTY11 + ["airplay", "", "44100", "16", ""], playing=False)
+silent = packet(EMPTY11, playing=False)
+
+i, s = make(mode="temp", secs=8)
+i.feed(airplay, 0)
+check(s.stream_label(0) == "AirPlay", "AirPlay tocando: o nome")
+check(names.rewrite("Volume -40.00 dB", "DAB" + " " * 13, names.validate({"inputs": {"DAB": "Streaming"}}), "AirPlay")
+      == ("Volume -40.00 dB", "AirPlay         "), "na tela do amp, \"AirPlay\" no lugar de \"Streaming\"")
+check(names.rewrite("Volume -40.00 dB", "DAB" + " " * 13, names.validate({"inputs": {"DAB": "Streaming"}}), None)
+      == ("Volume -40.00 dB", "Streaming       "), "sem streaming: o nome escolhido")
+check(names.rewrite("Volume -40.00 dB", "CD" + " " * 14, names.validate({}), "AirPlay")[1] == "CD" + " " * 14,
+      "  só na entrada do streaming (DAB)")
+check(s.pick(0, False, False, "DAB") is None, "AirPlay: sem a tela de qualidade (é só do Bluetooth)")
+
+i.feed(bt_sbc, 1000)
+check(s.stream_label(1000) == chr(screens.BT) + " Bluetooth", "Bluetooth: o símbolo e o nome")
+check(s.pick(1000, False, False, "DAB") == "quality", "o Bluetooth começou: a tela de qualidade")
+check(s.lines("quality", 1000) == (chr(screens.BT) + " Bluetooth  SBC", "44.1kHz 16b 328k"), "a tela: %r"
+      % (s.lines("quality", 1000),))
+check(s.pick(1000 + 7999, False, False, "DAB") == "quality" and s.pick(1000 + 8000, False, False, "DAB") is None,
+      "  fica 'secs' (8 s) e sai")
+i.feed(bt_sbc, 10000)
+check(s.pick(10000, False, False, "DAB") is None, "pacote repetido: não volta")
+i.feed(packet(EMPTY11 + ["bluetooth", "AAC", "48000", "16", "256"], playing=False), 12000)
+check(s.pick(12000, False, False, "DAB") == "quality" and s.lines("quality", 12000)[1] == "48kHz 16b   256k",
+      "a qualidade mudou: a tela volta")
+check(s.pick(12000, False, False, "PHONO") is None, "outra entrada: sem a tela de qualidade")
+i.feed(silent, 13000)
+check(s.stream_label(13000) is None, "o streaming parou: sem nome")
+check(s.stream_label(13000 + info.STALE_MS) is None, "sem pacotes: sem nome")
+
+i, s = make(mode="fixed", fixed="quality")
+i.feed(bt_sbc, 0)
+check(s.pick(0, False, False, "DAB") == "quality" and s.pick(10000, False, False, "DAB") == "quality",
+      "fixo: a tela de qualidade o tempo todo no Bluetooth")
+i, s = make(mode="temp", show=["track"])
+i.feed(bt_sbc, 0)
+check(s.pick(0, False, False, "DAB") is None, "temporário sem a tela marcada: não aparece")
+check(screens.GLYPHS[8 * screens.BT:] == screens.BT_GLYPH and screens.GLYPHS[:8 * screens.BT] ==
+      screens.vu_meter.GLYPHS[:8 * screens.BT], "o símbolo do Bluetooth no desenho 7; os da barra ficam")
 check(cfg(show=["stylus", "track"])["show"] == ["track", "stylus"], "as telas marcadas ficam na ordem certa")
 check(cfg(utc_offset=5.5)["utc_offset"] == 5.5 and cfg(source=" 192.168.178.99 ")["source"] == "192.168.178.99",
       "fuso com meia hora; IP com espaços")

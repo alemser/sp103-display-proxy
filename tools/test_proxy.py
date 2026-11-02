@@ -101,6 +101,24 @@ class FakeSniffer:
             yield self.words.pop(0)[1]
 
 
+class QuietSource:
+    """O socket UDP do info.py quando o teste não usa as telas: nunca chega pacote."""
+    def __init__(self, *a):
+        pass
+
+    def setblocking(self, flag):
+        pass
+
+    def sendto(self, data, addr):
+        pass
+
+    def recv(self, n):
+        raise OSError(11)
+
+    def close(self):
+        pass
+
+
 def load_proxy():
     stubs = {"time": fake_time(), "sniffer": types.SimpleNamespace(Sniffer=FakeSniffer),
              "busy": types.SimpleNamespace(Responder=lambda: None),
@@ -116,6 +134,8 @@ def load_proxy():
         names.save = lambda cfg: None
         sys.modules.pop("proxy", None)
         import proxy
+        # O Pico pede os pacotes das telas sempre: aqui a fonte fica muda (nada vai para a rede).
+        proxy.info_feed.socket = types.SimpleNamespace(socket=QuietSource, AF_INET=2, SOCK_DGRAM=2)
     finally:
         asyncio.run = run
         for k, v in saved.items():
@@ -328,6 +348,50 @@ def check_info(path):
     return fails
 
 
+class StreamSource(QuietSource):
+    """O socket UDP do info.py: a fonte manda um pacote "NP" a cada 5 s, com o streaming de
+    StreamSource.stream ("bluetooth", "airplay" ou "") e nada do disco."""
+    stream = ""
+
+    def __init__(self, *a):
+        self.next = 0
+
+    def recv(self, n):
+        now = Clock.us // 1000
+        if self.next > now:
+            raise OSError(11)
+        self.next += 5000
+        fields = [""] * 11 + [StreamSource.stream, "SBC", "44100", "16", "328"]
+        return b"NP\x01\x00" + "\x1f".join(fields).encode()
+
+
+def check_stream(path):
+    """Entrada DAB (09-dab.lac, chamada "Streaming"): o nome do streaming no lugar dela."""
+    import names
+    fails = 0
+
+    def ok(cond, what):
+        nonlocal fails
+        fails += not cond
+        print("%-5s %s" % ("ok" if cond else "FALHA", what))
+
+    words = words_from_lac(path)
+    for stream, want in (("bluetooth", "\x07 Bluetooth     "), ("airplay", "AirPlay         "),
+                         ("", "Streaming       ")):
+        proxy = load_proxy()
+        proxy.texts = names.validate({"inputs": {"DAB": "Streaming"}})
+        proxy.info_feed.socket = types.SimpleNamespace(socket=StreamSource, AF_INET=2, SOCK_DGRAM=2)
+        StreamSource.stream = stream
+        got = run_capture(proxy, words)
+        line2 = got[-1][1] if got else None
+        ok(line2 == want, "%s: a linha da entrada mostra %r" % (stream or "sem streaming", line2))
+        glyph7 = bytes(proxy.lcd.cgram[56:])
+        want7 = proxy.screens_mod.BT_GLYPH if stream == "bluetooth" else bytes(proxy.bus.lcd.cgram[56:])
+        ok(glyph7 == want7, "  desenho 7: %s" % ("o símbolo do Bluetooth" if stream == "bluetooth"
+                                                    else "o do controlador"))
+    return fails
+
+
 def main():
     paths = sorted(glob.glob(os.path.join(HERE, "..", "captures", "*.lac")))
     fails = 0
@@ -380,6 +444,8 @@ def main():
     fails += check_vu(os.path.join(HERE, "..", "captures", "05-tuner.lac"))
     print("\n4. Telas de informação (05-tuner.lac)")
     fails += check_info(os.path.join(HERE, "..", "captures", "05-tuner.lac"))
+    print("\n5. Streaming na entrada DAB (09-dab.lac)")
+    fails += check_stream(os.path.join(HERE, "..", "captures", "09-dab.lac"))
     print("\ntudo certo" if not fails else "\n%d falha(s)" % fails)
     sys.exit(1 if fails else 0)
 

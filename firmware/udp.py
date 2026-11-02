@@ -17,13 +17,14 @@ except ImportError:
 
 
 def poller(sock):
-    """O poll do socket, ou None se não der (o socket de mentira dos testes)."""
+    """O poll do socket, ou None se não der: o socket de mentira dos testes, ou o Python do
+    computador, que não tem o ipoll."""
     try:
         p = select.poll()
         p.register(sock, select.POLLIN)
-        return p
     except Exception:
         return None
+    return p if hasattr(p, "ipoll") else None
 
 
 def ready(p):

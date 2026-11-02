@@ -23,6 +23,7 @@ não conta como standby. power = None: ainda não se sabe (o Pico acabou de liga
 
 BOX = "\x00"                    # caractere personalizado 0: caixa das barras
 INPUTS = ("PHONO", "TUNER", "TAPE/AUX", "CD", "DVD", "DAB")
+STREAMING_INPUT = "DAB"         # escolhido pelo dono: a entrada ligada ao streaming (AirPlay, Bluetooth)
 # Identificadores estáveis, em minúsculas, para clientes da API.
 INPUT_IDS = {"PHONO": "phono", "TUNER": "tuner", "TAPE/AUX": "tape_aux",
              "CD": "cd", "DVD": "dvd", "DAB": "dab"}

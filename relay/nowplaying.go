@@ -3,17 +3,20 @@ package main
 // Telas de informação: o que está tocando, para o display do SP103 (docs/api-telas.md).
 //
 // Esta ponte é o adaptador do groove: lê o groove-identity (artista, música, posição,
-// faixa no disco) e o groove-catalog (faixas do disco, agulha) e traduz para o contrato
-// do Pico, que não sabe de onde os dados vêm. O Pico só desenha: o texto chega sem
+// faixa no disco), o groove-catalog (faixas do disco, agulha) e o arquivo de transporte
+// do groove-detector (AirPlay ou Bluetooth tocando, e a qualidade) e traduz para o
+// contrato do Pico, que não sabe de onde os dados vêm. O Pico só desenha: o texto chega sem
 // acentos e cortado, e os tempos valem no instante do envio (o Pico conta a partir dali).
 
 import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -45,11 +48,32 @@ type info struct {
 	Elapsed, Duration               int
 	SideTrack, SideTracks, SideLeft int
 	StylusHours, StylusWear         int
+	stream
+}
+
+// streamSource é o streaming tocando agora, como vai no pacote; "" = nenhum.
+type streamSource string
+
+const (
+	streamNone      streamSource = ""
+	streamAirPlay   streamSource = "airplay"
+	streamBluetooth streamSource = "bluetooth"
+)
+
+// stream é o streaming tocando e a qualidade dele (o groove-detector sabe a do Bluetooth).
+type stream struct {
+	Source                           streamSource
+	Codec                            string
+	SampleRateHz, BitDepth, BitrateK int
+}
+
+func unknownStream() stream {
+	return stream{SampleRateHz: -1, BitDepth: -1, BitrateK: -1}
 }
 
 func unknownInfo() info {
 	return info{Elapsed: -1, Duration: -1, SideTrack: -1, SideTracks: -1, SideLeft: -1,
-		StylusHours: -1, StylusWear: -1}
+		StylusHours: -1, StylusWear: -1, stream: unknownStream()}
 }
 
 // packet monta o datagrama "NP" (docs/api-telas.md).
@@ -62,7 +86,8 @@ func (in info) packet() []byte {
 	}
 	fields := []string{fold(in.Artist), fold(in.Title), fold(in.Position), num(in.Elapsed), num(in.Duration),
 		fold(in.Side), num(in.SideTrack), num(in.SideTracks), num(in.SideLeft),
-		num(in.StylusHours), num(in.StylusWear)}
+		num(in.StylusHours), num(in.StylusWear),
+		string(in.Source), fold(in.Codec), num(in.SampleRateHz), num(in.BitDepth), num(in.BitrateK)}
 	var flags byte
 	if in.Playing {
 		flags |= npFlagPlaying
@@ -118,6 +143,56 @@ func fold(s string) string {
 		out = out[:maxText]
 	}
 	return strings.TrimSpace(out)
+}
+
+// transportFile é o pedaço do /tmp/groove-transport.json do groove-detector que interessa
+// aqui (docs/contracts.md dele, "Streaming transport file").
+type transportFile struct {
+	Source     string `json:"source"`
+	Active     bool   `json:"active"`
+	Codec      string `json:"codec"`
+	SampleRate string `json:"samplerate"` // "44.1 kHz"
+	BitDepth   string `json:"bitdepth"`   // "16 bit"
+	Bitrate    string `json:"bitrate"`    // "328 kbps"
+}
+
+// readStream lê o arquivo de transporte. Sem arquivo, parado ou com uma fonte que o
+// contrato não conhece: nenhum streaming.
+func readStream(path string) stream {
+	st := unknownStream()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return st
+	}
+	var tf transportFile
+	if json.Unmarshal(data, &tf) != nil || !tf.Active {
+		return st
+	}
+	switch src := streamSource(tf.Source); src {
+	case streamAirPlay, streamBluetooth:
+		st.Source = src
+	default:
+		return st
+	}
+	st.Codec = tf.Codec
+	st.SampleRateHz = parseUnit(tf.SampleRate, map[string]float64{"kHz": 1000, "Hz": 1})
+	st.BitDepth = parseUnit(tf.BitDepth, map[string]float64{"bit": 1})
+	st.BitrateK = parseUnit(tf.Bitrate, map[string]float64{"kbps": 1})
+	return st
+}
+
+// parseUnit lê "44.1 kHz" com a tabela de unidades (kHz → 1000): 44100. -1 se não der.
+func parseUnit(s string, units map[string]float64) int {
+	f := strings.Fields(s)
+	if len(f) != 2 {
+		return -1
+	}
+	scale, ok := units[f[1]]
+	v, err := strconv.ParseFloat(f[0], 64)
+	if !ok || err != nil || v <= 0 {
+		return -1
+	}
+	return int(math.Round(v * scale))
 }
 
 // track é uma faixa do disco no catálogo.
@@ -210,8 +285,8 @@ type stylusState struct {
 
 // nowPlaying lê os serviços do groove e guarda o que precisa entre uma leitura e outra.
 type nowPlaying struct {
-	identity, catalog string
-	client            *http.Client
+	identity, catalog, transport string
+	client                       *http.Client
 
 	release    string // source/id do disco cujas faixas estão em tracks
 	tracks     []track
@@ -223,9 +298,9 @@ type nowPlaying struct {
 	endedEpoch uint64 // a captura da última faixa de um lado que já acabou
 }
 
-func newNowPlaying(identity, catalog string) *nowPlaying {
+func newNowPlaying(identity, catalog, transport string) *nowPlaying {
 	return &nowPlaying{identity: strings.TrimRight(identity, "/"), catalog: strings.TrimRight(catalog, "/"),
-		client: &http.Client{Timeout: httpTimeout}, stylus: unknownInfo(), last: unknownInfo()}
+		transport: transport, client: &http.Client{Timeout: httpTimeout}, stylus: unknownInfo(), last: unknownInfo()}
 }
 
 func (np *nowPlaying) getJSON(u string, v any) error {
@@ -255,6 +330,7 @@ func (np *nowPlaying) read(now time.Time) info {
 		}
 	}
 	in.StylusHours, in.StylusWear = np.stylus.StylusHours, np.stylus.StylusWear
+	in.stream = readStream(np.transport)
 
 	var st identityStatus
 	if err := np.getJSON(np.identity+"/status", &st); err != nil {

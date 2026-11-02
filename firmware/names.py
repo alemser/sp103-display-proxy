@@ -5,11 +5,12 @@ Ficam no arquivo names.json do Pico e são editados pela página web (PUT /names
     {"inputs": {"TUNER": "Rega Planar 2", ...},
      "boot":   ["Welcome", "Alessandro"],     # no lugar de "ACOUSTIC" / "SOLUTIONS"
      "about":  ["", ""],                      # no lugar de "Amplifier SP103" / "SW version 1.0"
-     "vu":     {"on": False, "auto": True, "floor": -40, "top": 0,     # VU meter (vu.py);
-                "layout": "bars", "relay": "192.168.178.105"}}       # floor/top: escala manual
+     "vu":     {"on": False, "layout": "bars",                      # VU meter (vu.py), sempre com a
+                "relay": "192.168.178.105"}}                         # escala automática
                                                                      # layout: bars, deck, scale, kx393
      "info":   {"on": False, "mode": "temp", "fixed": "track",          # telas de informação
-                "show": ["track", "pos", "side", "stylus"], "secs": 8,  # (screens.py, info.py)
+                "show": ["track", "pos", "side", "stylus", "quality"],  # (screens.py, info.py)
+                "secs": 8,                                              # quality: Bluetooth na DAB
                 "alert": True, "clock": True, "scroll": True,
                 "utc_offset": 0, "eu_dst": True, "source": "",          # source "" = a do VU
                 "turntable": ["PHONO", "TUNER"]}}                       # a agulha só nessas entradas
@@ -23,21 +24,17 @@ O "source" das telas é o IP de quem fala o contrato docs/api-telas.md; vazio = 
 
 import json
 
-from amp_state import INPUTS
+from amp_state import INPUTS, STREAMING_INPUT
 
 FILE = "names.json"
 MAX_LEN = 16                    # uma linha do LCD
 SCREENS = ("boot", "about")
-VU_DEFAULT = {"on": False, "auto": True, "floor": -40, "top": 0, "layout": "bars",
-              "relay": "192.168.178.105"}
+VU_DEFAULT = {"on": False, "layout": "bars", "relay": "192.168.178.105"}
 VU_LAYOUTS = ("bars", "deck", "scale", "kx393")   # os mesmos de vu.LAYOUTS
-VU_FLOOR = (-60, -10)           # o piso da escala do VU, em dBFS
-VU_TOP = (-30, 0)               # o topo (barra cheia), em dBFS
-VU_SPAN = 10                    # o topo fica pelo menos 10 dB acima do piso
-INFO_DEFAULT = {"on": False, "mode": "temp", "fixed": "track", "show": ["track", "pos", "side", "stylus"],
+INFO_DEFAULT = {"on": False, "mode": "temp", "fixed": "track", "show": ["track", "pos", "side", "stylus", "quality"],
                 "secs": 8, "alert": True, "clock": True, "scroll": True, "utc_offset": 0, "eu_dst": True,
                 "source": "", "turntable": ["PHONO", "TUNER"]}
-INFO_KINDS = ("track", "pos", "side", "stylus")   # os mesmos de screens.KINDS
+INFO_KINDS = ("track", "pos", "side", "stylus", "quality")   # os mesmos de screens.KINDS
 INFO_SECS = (3, 60)
 INFO_OFFSET = (-12, 14)         # horas a partir do UTC
 
@@ -99,26 +96,15 @@ def _vu(vu):
     if not isinstance(vu, dict):
         raise ValueError("'vu' must be a JSON object")
     out = dict(VU_DEFAULT)
-    out.update(vu)
-    for key in ("on", "auto"):
-        if not isinstance(out[key], bool):
-            raise ValueError("vu '%s' must be true or false" % key)
-    floor = out["floor"]
-    if isinstance(floor, bool) or not isinstance(floor, (int, float)) \
-            or not VU_FLOOR[0] <= floor <= VU_FLOOR[1]:
-        raise ValueError("the VU floor must be a number from %d to %d dB" % VU_FLOOR)
-    top = out["top"]
-    if isinstance(top, bool) or not isinstance(top, (int, float)) \
-            or not VU_TOP[0] <= top <= VU_TOP[1]:
-        raise ValueError("the VU top must be a number from %d to %d dB" % VU_TOP)
-    if top - floor < VU_SPAN:
-        raise ValueError("the VU top must be at least %d dB above the floor" % VU_SPAN)
+    out.update(vu)              # "auto", "floor" e "top" de um names.json antigo: ignorados
+    if not isinstance(out["on"], bool):
+        raise ValueError("vu 'on' must be true or false")
     if out["layout"] not in VU_LAYOUTS:
         raise ValueError("the VU layout must be one of: " + ", ".join(VU_LAYOUTS))
     if not _is_ip(out["relay"]):
         raise ValueError("the VU source must be an IP address, like 192.168.178.105")
-    return {"on": out["on"], "auto": out["auto"], "floor": int(floor), "top": int(top),
-            "layout": out["layout"], "relay": out["relay"]}
+    # A escala é sempre a automática (vu.py); a manual fica só para os testes.
+    return {"on": out["on"], "auto": True, "layout": out["layout"], "relay": out["relay"]}
 
 
 def _is_ip(text):
@@ -165,9 +151,13 @@ def _center(text):
     return (" " * left + text + " " * MAX_LEN)[:MAX_LEN]
 
 
-def rewrite(line1, line2, cfg):
-    """Troca os textos personalizados numa tela completa. As outras telas passam sem mudança."""
+def rewrite(line1, line2, cfg, stream=None):
+    """Troca os textos personalizados numa tela completa. As outras telas passam sem mudança.
+    stream: o nome do streaming tocando ("AirPlay"; screens.stream_label), que na entrada do
+    streaming toma o lugar do nome dela."""
     name = line2.rstrip()
+    if line1.startswith("Volume ") and name == STREAMING_INPUT and stream:
+        return line1, (stream + " " * MAX_LEN)[:MAX_LEN]
     if line1.startswith("Volume ") and name in cfg["inputs"]:
         return line1, (cfg["inputs"][name] + " " * MAX_LEN)[:MAX_LEN]
     if line1.strip() == "ACOUSTIC" and line2.strip() == "SOLUTIONS":
