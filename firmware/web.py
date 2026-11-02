@@ -209,7 +209,7 @@ function infoForm(c,d){return'<b>Info screens</b><span></span><label for="inon">
  '<label>Stylus screen on</label><span>'+d.inputs.map(k=>chk("intt"+k.replace("/",""),"info:turntable:"+k,
   c.turntable.includes(k),k+(d.config.inputs[k]?" ("+d.config.inputs[k]+")":""))).join("")+'</span>'+
  '<span class="amp">the inputs with a turntable</span>'+
- '<label for="inal">End of side</label>'+chk("inal","info:alert",c.alert,"last minute and &quot;Flip the record&quot;")+
+ '<label for="inal">End of side</label>'+chk("inal","info:alert",c.alert,"last minute and &quot;Flip the record&quot; (turntable inputs)")+
  '<label for="incl">Standby</label>'+chk("incl","info:clock",c.clock,"show the clock")+
  '<label for="insc">Long names</label>'+chk("insc","info:scroll",c.scroll,"scroll")+
  '<label for="intz">UTC offset (h)</label><input type="number" id="intz" name="info:utc_offset" min="-12" max="14" step="0.25" value="'+c.utc_offset+'">'+
@@ -234,6 +234,8 @@ nf.onsubmit=e=>{e.preventDefault();const b={inputs:{},boot:["",""],about:["",""]
  nst.textContent=d.error?"Error: "+d.error:"Saved.";if(!d.error)loadNames()})};
 </script></body></html>
 """
+PAGE = PAGE.encode()            # em bytes uma vez só, ao ligar (o texto some da memória)
+CHUNK = 1024                    # o corpo vai em pedaços: o Wi-Fi do Pico tem pouca memória
 
 
 class Request:
@@ -257,8 +259,12 @@ async def reply(writer, status, ctype, body):
     writer.write(("HTTP/1.1 %s\r\nContent-Type: %s\r\nContent-Length: %d\r\nCache-Control: no-store\r\n"
                   "Access-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n"
                   % (status, ctype, len(body))).encode())
-    writer.write(body)
     await writer.drain()
+    # Em pedaços, com uma espera entre eles: a página (12 KB) inteira de uma vez não cabe no
+    # buffer de envio (11,7 KB) e aperta a memória do Wi-Fi (issue #2: travamentos de 10 s).
+    for i in range(0, len(body), CHUNK):
+        writer.write(body[i:i + CHUNK])
+        await writer.drain()
 
 
 async def reply_json(writer, obj, status="200 OK"):
@@ -317,7 +323,7 @@ class Publisher:
                 await self._events(writer)
                 return
             elif path == "/":
-                await reply(writer, "200 OK", "text/html; charset=utf-8", PAGE.encode())
+                await reply(writer, "200 OK", "text/html; charset=utf-8", PAGE)
             elif "/" + route in self.routes:
                 await self.routes["/" + route](req, writer)
             else:

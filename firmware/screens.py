@@ -4,8 +4,10 @@ O proxy.py pergunta pick() quando a tela do amp não tem a vez (3 s depois de ca
 redesenho do controlador). Em ordem:
 
 1. Standby: o relógio, se ligado; senão, a tela do amp (apagada).
-2. Fim do lado (se o aviso estiver ligado): no último minuto, "End of side A" e o tempo;
-   depois que acaba, "Flip the record" piscando por FLIP_MS, e então a tela do amp.
+2. Fim do lado (se o aviso estiver ligado, e só nas entradas do toca-discos): no último
+   minuto, "End of side A" e o tempo; depois que acaba, "Flip the record" piscando por
+   FLIP_MS, e então a tela do amp. Um fim de lado que já veio no primeiro pacote (o Pico
+   acabou de ligar) não conta: o aviso é para quando o disco acaba.
 3. Modo fixo: a tela escolhida, o tempo todo enquanto toca. O VU não entra.
 4. Modo temporário: a cada faixa nova, as telas marcadas em sequência, "secs" cada uma
    (a da agulha só no começo de um lado). Depois o VU, se ligado; senão, a tela do amp.
@@ -157,10 +159,10 @@ class Screens:
             self.seen_track = info.track_seq
             self.seq = [k for k in KINDS if k in cfg["show"] and (k != "stylus" or info.side_start)]
             self.seq_at = now
-        if cfg["alert"] and info.data["side"] is not None:
+        if cfg["alert"] and info.data["side"] is not None and self.input in cfg["turntable"]:
             left = info.side_left(now)
             if info.side_end:
-                if time.ticks_diff(now, info.side_end_at) < FLIP_MS:
+                if info.side_end_at is not None and time.ticks_diff(now, info.side_end_at) < FLIP_MS:
                     return "alert"
             elif info.playing and left is not None and left < ALERT_S:
                 return "alert"

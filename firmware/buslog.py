@@ -128,7 +128,7 @@ class BusLog:
         from web import reply, reply_json
         now = time.ticks_ms()
         if req.path == "/bus":
-            await reply(writer, "200 OK", "text/html; charset=utf-8", PAGE.encode())
+            await reply(writer, "200 OK", "text/html; charset=utf-8", PAGE)
         elif req.path == "/bus.json":
             await reply_json(writer, self.stats(now))
         elif req.path == "/bus/clear" and req.method == "POST":
@@ -199,3 +199,4 @@ document.getElementById("clr").onclick=()=>{if(confirm("Clear the log and the co
 load();setInterval(load,2000);
 </script></body></html>
 """
+PAGE = PAGE.encode()            # em bytes uma vez só, ao ligar

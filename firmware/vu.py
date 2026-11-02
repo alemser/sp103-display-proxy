@@ -39,6 +39,8 @@ import socket
 import struct
 import time
 
+import udp
+
 PORT = 7091
 SUBSCRIBE = b"SUB1"
 SUBSCRIBE_MS = 2000             # o relay esquece o pedido em 6 s
@@ -154,6 +156,7 @@ class Vu:
         self.top = 0
         self.addr = None
         self.sock = None
+        self._poll = None
         self.last_sub = None
         self.last_frame = None
         self.programme = False
@@ -206,6 +209,7 @@ class Vu:
         if self.sock is not None:
             self.sock.close()
             self.sock = None
+            self._poll = None
         self.last_frame = None
 
     def _px(self, value_db, steps=STEPS):
@@ -219,6 +223,7 @@ class Vu:
         if self.sock is None:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.sock.setblocking(False)
+            self._poll = udp.poller(self.sock)
         if self.last_sub is None or time.ticks_diff(now, self.last_sub) >= SUBSCRIBE_MS:
             self.last_sub = now
             try:
@@ -226,7 +231,7 @@ class Vu:
             except OSError:
                 pass                    # sem Wi-Fi ainda: tenta de novo em 2 s
         new = False
-        while True:
+        while udp.ready(self._poll):
             try:
                 data = self.sock.recv(32)
             except OSError:

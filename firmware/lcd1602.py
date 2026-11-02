@@ -78,12 +78,29 @@ class Lcd1602:
             self.data(r)
         self.command(0x80)              # volta para a DDRAM
 
-    def write_line(self, row, text):
-        """Escreve as 16 posições de uma linha (completa com espaços)."""
+    def write_line(self, row, text, old=None):
+        """Escreve uma linha de 16 posições (completa com espaços).
+
+        old = o que já está nessa linha do display: manda só as posições que mudaram (cada
+        byte custa uns 100 µs com o laço parado; no VU, poucas células mudam por quadro).
+        Sem old, escreve as 16."""
         text = (text + " " * 16)[:16]
-        self.command(0x80 | (0x40 if row else 0x00))
-        for c in text:
-            self.data(ord(c))
+        base = 0x80 | (0x40 if row else 0x00)
+        if old is None or len(old) != 16:
+            self.command(base)
+            for c in text:
+                self.data(ord(c))
+            return
+        at = -1                         # onde o cursor do display está (-1 = não se sabe)
+        for col in range(16):
+            if text[col] == old[col]:
+                continue
+            if at >= 0 and col - at == 1:
+                self.data(ord(text[at]))    # um só igual no meio: reescrever custa o mesmo que pular
+            elif col != at:
+                self.command(base + col)
+            self.data(ord(text[col]))
+            at = col + 1
 
     def show(self, line1, line2):
         self.write_line(0, line1)

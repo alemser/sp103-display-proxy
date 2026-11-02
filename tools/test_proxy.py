@@ -87,8 +87,9 @@ class FakeLcd:
     def define_char(self, code, rows):
         self.cgram[8 * code:8 * code + 8] = bytes(rows)
 
-    def write_line(self, row, text):
+    def write_line(self, row, text, old=None):
         assert len(text) == 16, text
+        assert old is None or old == self.lines[row], (old, self.lines[row])   # o proxy sabe o que está lá
         self.lines[row] = text
 
 

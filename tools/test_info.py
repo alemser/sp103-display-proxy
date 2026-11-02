@@ -145,10 +145,12 @@ check(s.lines("stylus", 0) == ("Stylus     312 h", chr(4) * 7 + chr(1) + "     6
 i.feed(packet(time_a4(161, 544)[:5] + ["", "", "", "", "312", "62"]), 100)
 check(s.pick(100, False, True) == "track", "fixo sem os dados do lado: artista e música")
 i.feed(packet(time_a4(161, 50)), 200)
-check(s.pick(200, False, True) == "alert", "último minuto do lado: o aviso")
+check(s.pick(200, False, True, "PHONO") == "alert", "último minuto do lado: o aviso")
+check(s.pick(200, False, True, "DAB") == "side", "  só nas entradas do toca-discos (no DAB, não)")
 check(s.lines("alert", 200) == ("End of side A   ", "Left        0:50"), "o aviso com o tempo")
 i.feed(packet(["Pink Floyd", "", "", "", "", "A", "5", "5", "0", "312", "62"], playing=False, side_end=True), 300)
-check(s.pick(300, False, True) == "alert", "o lado acabou: o aviso")
+check(s.pick(300, False, True, "PHONO") == "alert", "o lado acabou: o aviso")
+check(s.pick(300, False, True, "CD") != "alert", "  no CD, não")
 on, off = s.lines("alert", 300 + 200), s.lines("alert", 300 + 1200)
 check(on[1] == "Flip the record " and off[1] == " " * 16, "\"Flip the record\" piscando")
 s.configure(cfg(mode="fixed", alert=False))
@@ -160,14 +162,20 @@ check(s.pick(400 + info.STALE_MS, False, True) == "vu", "sem dados: o VU, se tiv
 
 i, s = make(mode="fixed")
 ended = packet(["Pink Floyd", "", "", "", "", "A", "5", "5", "0", "312", "62"], playing=False, side_end=True)
+i.feed(packet(time_a4(161, 5)), -1000)  # tocava a última faixa
 shown = {}
 for t in range(0, 90000, 1000):
     if t % 5000 == 0:                  # a ponte repete "o lado acabou" a cada 5 s
         i.feed(ended, t)
-    shown[t] = s.pick(t, False, False)
+    shown[t] = s.pick(t, False, False, "PHONO")
 check(shown[0] == "alert" and shown[screens.FLIP_MS - 1000] == "alert", "\"Flip the record\" fica um tempo")
 check(shown[screens.FLIP_MS] is None and shown[89000] is None,
       "  e depois volta a tela do amp; os pacotes repetidos não recomeçam a contagem")
+
+i, s = make(mode="fixed")              # o Pico liga com o lado já acabado (reinício, atualização)
+i.feed(ended, 0)
+check(s.pick(0, False, False, "PHONO") is None and s.pick(5000, False, False, "PHONO") is None,
+      "lado que já tinha acabado antes de ligar: sem \"Flip the record\"")
 
 i, s = make(mode="temp", secs=8, show=["track", "side", "stylus"])
 check(s.vu_allowed(), "temporário: o VU pode entrar")
@@ -227,6 +235,41 @@ for bad in ({"mode": "always"}, {"fixed": "clock"}, {"show": ["track", "lyrics"]
         check(False, "recusa %r" % bad)
     except ValueError:
         check(True, "recusa %r" % bad)
+
+# udp.py: com o poll (o MicroPython), o recv() só é chamado com pacote na fila.
+import udp   # noqa: E402
+
+
+class FakePoll:
+    def register(self, sock, mask):
+        self.sock = sock
+
+    def ipoll(self, timeout):
+        return iter([(self.sock, 1)] if self.sock.queue else [])
+
+
+class CountingSock(FakeSock):
+    recvs = 0
+
+    def recv(self, n):
+        CountingSock.recvs += 1
+        return FakeSock.recv(self, n)
+
+
+real_select = udp.select
+udp.select = types.SimpleNamespace(poll=FakePoll, POLLIN=1)
+info.socket = types.SimpleNamespace(socket=CountingSock, AF_INET=2, SOCK_DGRAM=2)
+i = info.Info()
+i.configure(True, "192.168.178.99")
+for t in range(0, 1000, 10):
+    i.poll(t)
+check(CountingSock.recvs == 0 and isinstance(i._poll, FakePoll), "fila vazia: nem chama o recv (sem erro)")
+i.sock.queue.append(packet(time_a4(1, 2)))
+check(i.poll(1000) and CountingSock.recvs == 1, "com pacote: lê só ele")
+i.configure(False, "192.168.178.99")
+check(i._poll is None, "desligado: larga o poll junto com o socket")
+udp.select = real_select
+check(udp.poller(FakeSock()) is None and udp.ready(None), "socket sem poll: cai no recv com erro, como antes")
 
 print("\ntudo certo" if not fails else "\n%d falha(s)" % fails)
 sys.exit(1 if fails else 0)

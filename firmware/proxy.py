@@ -108,7 +108,7 @@ def draw(full=False):
     line1, line2 = m.lines()
     for row, text in enumerate(names.rewrite(line1, line2, texts)):
         if text != shown[row]:
-            lcd.write_line(row, text)
+            lcd.write_line(row, text, shown[row])
             shown[row] = text
     if m.display_on != shown_on:
         lcd.display(m.display_on)
@@ -133,7 +133,7 @@ def show_own(key, ms, full=False):
     lines = vu.lines() if key == "vu" else screens.lines(key, ms)
     for row, text in enumerate(lines):
         if text != shown[row]:
-            lcd.write_line(row, text)
+            lcd.write_line(row, text, shown[row])
             shown[row] = text
 
 
@@ -194,8 +194,7 @@ async def listen():
             draw()
             cleared, clears_seen = bus.clears != clears_seen, bus.clears
             if state.update(screen[0], screen[1], time.ticks_ms(), cleared):
-                print("amp: %r | %r" % screen)
-                pub.changed()
+                pub.changed()           # sem print aqui: girar o volume dá vários por segundo
             log.screen(ms, state.screen != "unknown")
         elif not n and quiet and time.ticks_diff(ms, last_full) > REFRESH_MS:
             if own:

@@ -14,6 +14,8 @@ hora de desenhar.
 import socket
 import time
 
+import udp
+
 PORT = 7091
 SUBSCRIBE = b"SUB2\x02"         # só as telas; o VU pede à parte (vu.py)
 SUBSCRIBE_MS = 2000             # a fonte esquece o pedido em 6 s
@@ -31,12 +33,13 @@ class Info:
         self.on = False
         self.addr = None
         self.sock = None
+        self._poll = None
         self.last_sub = None
         self.last_packet = None
         self.packets = 0
         self.playing = False
         self.side_end = False
-        self.side_end_at = 0            # ticks_ms em que o lado acabou
+        self.side_end_at = None         # ticks_ms em que o lado acabou (None = antes de o Pico ver)
         self.data = {name: None for name in FIELDS}
         self.track_seq = 0              # muda a cada faixa nova (as telas temporárias recomeçam)
         self.side_start = False         # a faixa de agora é a primeira do lado
@@ -54,6 +57,7 @@ class Info:
         if self.sock is not None:
             self.sock.close()
             self.sock = None
+            self._poll = None
         self.last_packet = None
 
     def poll(self, now):
@@ -63,6 +67,7 @@ class Info:
         if self.sock is None:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.sock.setblocking(False)
+            self._poll = udp.poller(self.sock)
         if self.last_sub is None or time.ticks_diff(now, self.last_sub) >= SUBSCRIBE_MS:
             self.last_sub = now
             try:
@@ -70,7 +75,7 @@ class Info:
             except OSError:
                 pass                    # sem Wi-Fi ainda: tenta de novo em 2 s
         new = False
-        while True:
+        while udp.ready(self._poll):
             try:
                 packet = self.sock.recv(512)
             except OSError:
@@ -114,7 +119,9 @@ class Info:
         self.playing = playing
         side_end = bool(flags & FLAG_SIDE_END)
         if side_end and not self.side_end:
-            self.side_end_at = now
+            # No primeiro pacote (o Pico acabou de ligar, ou as telas foram religadas), o lado já
+            # tinha acabado antes: a fonte repete o fim do lado por até 15 min. Não é aviso novo.
+            self.side_end_at = now if self.last_packet is not None else None
         self.side_end = side_end
         self.last_packet = now
         self.packets += 1
