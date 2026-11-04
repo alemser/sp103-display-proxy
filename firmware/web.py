@@ -8,7 +8,7 @@
                   "vu": {"on": true, "layout": "bars", "relay": "192.168.178.105"},
                    "info": {"on": true, "mode": "temp", ...}}      (telas de informação)
                   (texto vazio = original; ver names.py)
-    outras        rotas extras, por prefixo: routes={"/update": ota.handle, "/bus": log.handle}
+    outras        rotas extras, por prefixo: routes={"/update": ota.handle, "/bus": log.handle, "/device": device.handle}
 
 Uso (com asyncio):
     asyncio.create_task(wifi_task(aviso))   # nunca trava nem levanta erro

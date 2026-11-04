@@ -8,6 +8,7 @@ provider" do amplificador) pode confiar; mudanças nele precisam mudar também o
 
 | Rota | O quê |
 |---|---|
+| `GET /device` | Quem é a ponte e o que ela sabe fazer. O contrato está em `docs/contrato.md`, no repositório amp-link |
 | `GET /state` | O estado atual, em JSON |
 | `GET /events` | Server-Sent Events: um `data: {json}` com o estado atual logo ao conectar, e outro a cada mudança. Um comentário `: ping` a cada 1 s mantém a conexão viva: sem nada por uns 5 s, o cliente deve reconectar |
 

@@ -121,6 +121,21 @@ def version(files):
     return hexlify(h.digest()).decode()[:8]
 
 
+_current = None                 # o programa só muda reiniciando: calcula uma vez só
+
+
+async def current_version():
+    """A versão do status(), sem parar a escuta: ler todos os arquivos de uma vez leva uns 0,6 s."""
+    global _current
+    if _current is None:
+        files = {}
+        for name in _program():
+            files[name] = _sha(name)
+            await asyncio.sleep(0)
+        _current = version(files)
+    return _current
+
+
 def status():
     m = _marker()
     files = _files()

@@ -33,6 +33,7 @@ import asyncio
 
 import info as info_feed
 import names
+import device
 import ota
 import screens as screens_mod
 import sp103_screens as s
@@ -295,7 +296,7 @@ async def confirm_update():
 async def main():
     global pub
     pub = Publisher(state, get_names=lambda: texts, set_names=set_texts, names_extra=status,
-                    routes={"/update": ota.handle, "/bus": log.handle})
+                    routes={"/update": ota.handle, "/bus": log.handle, "/device": device.handle})
     log.clear(time.ticks_ms())
     asyncio.create_task(wifi_task(wifi_result))
     await asyncio.sleep(0.1)            # o Wi-Fi liga antes do servidor abrir o socket
