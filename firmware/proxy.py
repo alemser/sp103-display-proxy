@@ -9,12 +9,13 @@ Cada tela completa do controlador é reconstruída (hd44780.py), vai para o leit
 (amp_state) e é desenhada no display do amp já com os textos personalizados
 (names.rewrite). Os desenhos próprios (CGRAM) e o "display on/off" seguem os do controlador.
 
-Com o VU ligado na página (vu.py), as duas linhas viram as barras L e R enquanto houver
+Com o VU ligado na configuração (vu.py), as duas linhas viram as barras L e R enquanto houver
 música; cada redesenho do controlador traz a tela do amp de volta por 3 s. Com as telas de
 informação ligadas (info.py recebe, screens.py escolhe), o display mostra também o que
 está tocando, o fim do lado, a agulha e o relógio no standby.
 
-Publica o estado em http://sp103.local/ (ou pelo IP), com /bus e atualização pelo Wi-Fi,
+Publica o estado na rede (web.py; o cliente é a app do repositório amp-link), com /bus e
+atualização pelo Wi-Fi,
 como a escuta. Sem Wi-Fi, o display continua funcionando.
 
 Rodar pelo computador:  .venv/bin/mpremote run firmware/proxy.py
@@ -159,11 +160,7 @@ def set_texts(cfg):
 def status():
     ms = time.ticks_ms()
     return {"proxy": {"reads": bus.reads, "writes": bus.writes, "busy_high": busy_high},
-            "vu": vu.status(ms), "info": info.status(ms), "screens": screens.status(ms),
-            "vu_glyphs": {name: list(g) for name, g in (("bars", vu_meter.GLYPHS),
-                                                        ("deck", vu_meter.DECK_GLYPHS),
-                                                        ("scale", vu_meter.SCALE_GLYPHS),
-                                                        ("kx393", vu_meter.KX_GLYPHS))}}
+            "vu": vu.status(ms), "info": info.status(ms), "screens": screens.status(ms)}
 
 
 async def listen():
@@ -277,7 +274,7 @@ async def clock_task():
 async def confirm_update():
     """Versão nova em teste (ota.py): confirma quando ela se mostra saudável. Sem isso,
     o main.py volta para a versão anterior. Saudável = a escuta roda, o Wi-Fi conectou e
-    a página respondeu a alguém (o tools/enviar.py pergunta a cada 2 s), por 20 s seguidos."""
+    o servidor respondeu a alguém (o tools/enviar.py pergunta a cada 2 s), por 20 s seguidos."""
     if not ota.in_trial():
         return
     start = time.ticks_ms()

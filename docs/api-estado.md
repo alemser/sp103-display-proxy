@@ -32,7 +32,7 @@ o Pico reiniciar, o bass fica `null` até alguém mexer nele.
 | `volume_db` | −78.75 a 0, passos de 1.25 | O número da tela de volume |
 | `input` | `PHONO`, `TUNER`, `TAPE/AUX`, `CD`, `DVD`, `DAB` | O nome original no amp |
 | `input_id` | `phono`, `tuner`, `tape_aux`, `cd`, `dvd`, `dab` | Estável, para programas; os mesmos ids do perfil `acoustic_solutions_sp103` do groove-rig |
-| `input_name` | texto | O nome personalizado (página do Pico), ou o original |
+| `input_name` | texto | O nome personalizado (app), ou o original |
 | `bass_db`, `treble_db` | −14 a 14, inteiros | |
 | `balance` | `{"side": "L"/"R"/null, "db": −78.75..0}` | `db` 0 = centro. `side` null abaixo de 5 dB: a barra do amp ainda não mostra o lado |
 | `loudness`, `speakers` | `true`, `false` | |
@@ -56,7 +56,8 @@ ser ligado: um cliente que precisa saber deve tratar `null` como "não sei", nun
 
 - Prefira o `/events`: cada mudança chega na hora (uns 10 ms depois de o controlador terminar a tela, mais o Wi-Fi).
 - Se o Pico sumir (sem `ping` por uns 5 s), considere o estado desconhecido e reconecte com espera crescente.
-- O Pico atende poucas conexões ao mesmo tempo: um `/events` por cliente, não um por tela.
+- O Pico atende poucas conexões ao mesmo tempo: um `/events` por cliente, não um por tela. Ele guarda uma conexão por IP
+  e 3 no total: uma conexão nova do mesmo IP derruba a antiga, e com o teto cheio sai a mais antiga.
 - O `sp103.local` funciona no iOS e no macOS. O groove-rig (Go sem cgo) **não** resolve nomes `.local`: use o IP,
   que é fixo pelo roteador (`http://192.168.178.108/events`).
 - No groove-rig, este é o "state provider" do perfil SP103: o contrato genérico está no `docs/state-provider.md` de lá.

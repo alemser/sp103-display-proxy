@@ -1,6 +1,6 @@
 """Textos personalizados do display: nomes das entradas e telas de inicialização.
 
-Ficam no arquivo names.json do Pico e são editados pela página web (PUT /names):
+Ficam no arquivo names.json do Pico e são editados pela app (PUT /names):
 
     {"inputs": {"TUNER": "Rega Planar 2", ...},
      "boot":   ["Welcome", "Alessandro"],     # no lugar de "ACOUSTIC" / "SOLUTIONS"

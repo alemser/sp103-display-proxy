@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lê o CSV baixado de http://sp103.local/bus e remonta as telas do amp, com o horário.
+"""Lê o CSV baixado de http://sp103.local/bus.csv e remonta as telas do amp, com o horário.
 
     python3 tools/ler_bus.py ~/Downloads/sp103-bus-2026-10-24-2115.csv
     python3 tools/ler_bus.py arquivo.csv --palavras      # também cada palavra, uma por linha

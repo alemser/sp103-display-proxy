@@ -214,7 +214,7 @@ check(v.top == -40, "o topo não desce abaixo de -40 dB")
 v.sock.queue.append(frame(5, 5))
 v.poll(t + 46)
 check(v.top == 0, "nem sobe acima de 0 dB")
-check(v.status(t + 46)["top"] == 0 and v.status(t + 46)["auto"], "a página vê a escala de agora")
+check(v.status(t + 46)["top"] == 0 and v.status(t + 46)["auto"], "o status mostra a escala de agora")
 
 # --- Vu: pedido, quadros, música -----------------------------------------------
 v = vu.Vu()

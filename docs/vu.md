@@ -1,6 +1,6 @@
 # VU meter no display do amp
 
-Com "VU meter" ligado na página do Pico, as duas linhas do display viram as barras dos canais esquerdo (L) e direito
+Com o VU meter ligado na app (aba Display), as duas linhas do display viram as barras dos canais esquerdo (L) e direito
 (R) **enquanto houver música**. Desde 2026-10-29. Proposta visual: <https://claude.ai/artifact/6Zrty8KCsb3ZRsa7Uh2Ax7>.
 
 ## Caminho dos dados
@@ -32,7 +32,7 @@ Flags: bit 0 = há música; bit 1 = o arquivo do gate foi lido. Sem o arquivo do
 
 ## O que o display mostra
 
-1. **VU desligado** na página: tudo como antes. O Pico nem pede os quadros.
+1. **VU desligado** na app: tudo como antes. O Pico nem pede os quadros.
 2. **VU ligado, com música e quadros chegando**: L na linha 1, R na linha 2. Coluna 0 = a letra; colunas 1 a 15 = a barra,
    5 colunas de pixels cada: 75 passos do piso até o topo (escala automática).
 3. **O controlador desenhou uma tela** (volume, entrada, menu, ligar): a tela do amp aparece na hora e fica 3 s depois do
@@ -54,9 +54,8 @@ lugar das barras do amp; ao voltar para a tela do amp, o Pico grava de volta os 
 | Escala impressa (`scale`) | L e R na linha 1 (L na metade de cima de cada célula, R na de baixo); a linha 2 é a régua em dB abaixo do topo (`20 10 6 3 0` na escala automática). O pico é um segmento sozinho; no clip, o 0 da régua vira o bloco cheio da ROM | 32 | 8 pares L/R (`vu.SCALE_GLYPHS`) |
 | Yamaha KX-393 (`kx393`) | o medidor do deck: L e R na linha 1, sem letras (L em cima, R embaixo), um segmento por célula na escala do deck, de −30 a +8, de 2 em 2 dB perto do 0. O 0 do deck fica 10 dB abaixo do topo; os segmentos acima dele são mais altos. A linha 2 é a régua `30 17 10 4 0 4 8`. O pico é um segmento sozinho; o clip acende o último | 16 | 6 (`vu.KX_GLYPHS`) |
 
-A página do Pico mostra uma simulação do layout escolhido, com música inventada e a escala automática.
 
-## Configuração (página do Pico, "Display")
+## Configuração (app, aba Display)
 
 | Campo | Padrão | Faixa |
 |---|---|---|
@@ -74,7 +73,7 @@ música: DAB com média perto de −30 dBFS; vinil (o Rega na entrada TUNER) com
 detector, então não é ruído grave. Com a escala automática, o topo fica 5 dB acima do quadro mais alto: sobe na hora e,
 com música, desce 1 dB/s (do vinil ao DAB leva uns 24 s). O piso fica 20 dB abaixo do topo, como num VU de ponteiro: a
 música varia pouco de um quadro para outro (no vinil, 90 % dos quadros numa faixa de 7 dB), e com 20 dB a barra fica
-entre a metade e 3/4, mexendo. Sem música o topo fica parado; ele vai de −40 a 0 dB. A página mostra a escala de agora
+entre a metade e 3/4, mexendo. Sem música o topo fica parado; ele vai de −40 a 0 dB. A app mostra a escala de agora
 ("scale −26 to −6 dB").
 
 **Escala manual (removida da página em 2026-11-02):** piso e topo fixos, escolhidos à mão. Saiu porque a automática
@@ -85,7 +84,7 @@ acompanha a fonte sozinha; o `vu.py` ainda a aceita (`"auto": false`), mas só o
 do REC OUT provavelmente nem é medido. Com uma captura estéreo de linha (plano: HiFiBerry DAC+ ADC), o VU mostra os
 dois canais sem mudar nada no Pico nem na ponte; só é preciso recalibrar o ganho no groove-detector.
 
-Se o VU der um erro no Pico, ele se desliga sozinho e o display continua com a tela do amp; a página mostra o erro.
+Se o VU der um erro no Pico, ele se desliga sozinho e o display continua com a tela do amp; a app mostra o erro.
 Diagnóstico em `http://sp103.local/names`, campo `vu` (quadros recebidos, idade do último, música).
 
 ## Instalar a ponte

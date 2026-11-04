@@ -75,7 +75,7 @@ A "versão" é um código de 8 letras que muda sempre que algum arquivo muda.
 
 - **`main.py`**: é o "porteiro" que faz a volta. Se ele estragasse, nada mais voltaria. Mudou o `main.py`? Só pelo cabo.
 - **`secrets.py`**: tem as senhas. Para trocar a senha do Wi-Fi ou da atualização, só pelo cabo.
-- **`names.json`**: os textos personalizados ficam no Pico e são editados pela página.
+- **`names.json`**: os textos personalizados ficam no Pico e são editados pela app.
 
 ## Segurança
 

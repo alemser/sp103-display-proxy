@@ -5,7 +5,7 @@ no meio entre o controlador original (T9311) e o display (LCD 16x2, HD44780).
 
 - O controlador e todas as funções do amp continuam originais. O Pico só muda o que o display mostra:
   "TUNER" vira "Rega Planar 2", e assim por diante.
-- O Pico publica o estado do amp (volume, entrada, menus) na rede, em `http://sp103.local/`.
+- O Pico publica o estado do amp (volume, entrada, menus) na rede, em `http://sp103.local/` (só a API: `docs/api-estado.md`).
 - Opcional: as duas linhas viram um VU meter (canais L e R, com o pico) enquanto toca música, com os dados do
   groove-detector (`docs/vu.md`).
 - O Pico não manda nada para o amp nem para outros equipamentos. O controle por IR fica no projeto groove-rig.
@@ -28,10 +28,11 @@ controlador T9311 ──(GP2–GP12, 8 bits)──► Pico 2 W ──(GP16–21,
 
 | Para quê | Como |
 |---|---|
-| Ver o estado do amp | `http://sp103.local/` (ou o IP do Pico) |
-| Trocar os nomes das entradas e das telas de início | a página, em "Custom texts" (até 16 caracteres, sem acentos) |
-| Ligar o VU meter | a página, em "Display" (`docs/vu.md`) |
-| Ver o barramento e baixar o registro | `http://sp103.local/bus` |
+| Ver o estado do amp | a app Amp Link (repositório amp-link), aba Now |
+| Trocar os nomes das entradas e das telas de início | a app, aba Names (até 16 caracteres, sem acentos) |
+| Ligar o VU meter | a app, aba Display (`docs/vu.md`) |
+| Ver o barramento | a app, aba Status |
+| Baixar o registro | `curl http://sp103.local/bus.csv` |
 | Atualizar o programa do Pico | `python3 tools/enviar.py` |
 | Testar no computador | `python3 tools/test_proxy.py` (e os outros `tools/test_*.py`); a ponte: `cd relay && make test` |
 

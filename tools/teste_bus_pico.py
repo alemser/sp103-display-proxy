@@ -1,9 +1,9 @@
-"""Teste da página /bus na bancada, sem o amp: .venv/bin/mpremote run tools/teste_bus_pico.py
+"""Teste do /bus na bancada, sem o amp: .venv/bin/mpremote run tools/teste_bus_pico.py
 
 Roda o programa da escuta (o escuta.py que está no Pico) e, junto, um "amp de mentira" que
 escreve uma tela de volume nos pinos GP2..GP12 a cada 2 s, seguindo a mesma regra do
 teste_sniffer_pico.py: o Pico só PUXA para 0, e o nível 1 vem do pull-up interno.
-Enquanto roda, abra http://sp103.local/bus, baixe o CSV e leia com tools/ler_bus.py.
+Enquanto roda, baixe http://sp103.local/bus.csv e leia com tools/ler_bus.py.
 Ctrl-C para parar.
 
 Rode com o amp FORA DA TOMADA (ou com os fios do amp desligados do Pico).
