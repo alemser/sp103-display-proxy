@@ -1,6 +1,6 @@
 # Instalação atual: o Pico no meio, entre o controlador e o display
 
-Montado e funcionando desde 2026-10-29 (opção 3b de `opcoes-intercepcao.md`). O display do amp foi dessoldado. Os
+Montado e funcionando desde 2026-10-29 (opção 3b de `historico/opcoes-intercepcao.md`). O display do amp foi dessoldado. Os
 pinos 1–3, 15 e 16 voltaram a ser soldados na placa; os pinos 4–14 não entram mais nela:
 
 - **Lado do controlador**: fios Dupont soldados nos furos 4–14 da placa de baixo.

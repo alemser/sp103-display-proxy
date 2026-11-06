@@ -53,13 +53,10 @@ botão Function ◄───(GP0 lê, GP1 só puxa para 0)── Pico 2 W
 | [`docs/vu.md`](docs/vu.md) | O VU meter: a ponte no Orange Pi, o protocolo, o que o display mostra, a configuração |
 | [`docs/atualizacao-wifi.md`](docs/atualizacao-wifi.md) | Atualizar o Pico pelo Wi-Fi, com volta automática |
 | [`docs/descobertas-protocolo.md`](docs/descobertas-protocolo.md) | Como o controlador fala com o display: comandos, telas e parte elétrica |
-| [`docs/opcoes-intercepcao.md`](docs/opcoes-intercepcao.md) | Por que o Pico precisa ficar no meio, e as opções analisadas |
 | [`docs/bancada-ligacao.md`](docs/bancada-ligacao.md) | Display reserva na bancada (mesma ligação 4 bits do display do amp) |
-| [`docs/brief.md`](docs/brief.md) | O objetivo inicial, a arquitetura e o andamento por etapa |
 | [`docs/ligacao-analisador.md`](docs/ligacao-analisador.md) | Mapa de pinos do LCD e do T9311, ligação do analisador lógico |
-| [`docs/espiao/mapa-pernas.md`](docs/espiao/mapa-pernas.md) | Mapa das pernas do controlador T9311DP, medido com o multímetro |
-| [`docs/roteiro-medicoes.md`](docs/roteiro-medicoes.md), [`docs/roteiro-captura.md`](docs/roteiro-captura.md) | Roteiros das medições e das capturas (histórico) |
-| [`tools/logicanalyzer/LEIA-ME.md`](tools/logicanalyzer/LEIA-ME.md) | O programa do analisador lógico |
+| [`docs/placa-frontal/mapa-pernas.md`](docs/placa-frontal/mapa-pernas.md) | Mapa das pernas do controlador T9311DP, medido com o multímetro, e fotos da placa |
+| [`docs/historico/`](docs/historico/) | Registro do projeto: objetivo inicial, opções analisadas e roteiros de medição e captura. Não descrevem o estado atual |
 
 ## Pastas
 

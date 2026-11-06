@@ -208,7 +208,7 @@ Os mesmos números negativos (-1,25 → -12,50 dB). Só a **barra** muda de lado
 ## Elétrica das portas e leitura do busy flag (2026-10-24)
 
 Medido com o multímetro (amp em standby, iguais com o amp ligado) e com o Pico, nos testes da escrita sem corte
-(`opcoes-intercepcao.md`; as ferramentas estão no histórico do git).
+(`historico/opcoes-intercepcao.md`; as ferramentas estão no histórico do git).
 
 | Fio | Porta | Repouso | Quando vai a 1 | Medição |
 |---|---|---|---|---|
