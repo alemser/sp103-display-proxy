@@ -99,6 +99,17 @@ for query in ({"target": "x", "dir": "up"}, {"target": "bass"}, {"target": "bass
     except ValueError as e:
         assert str(e) == "Unknown control"
 
+# Uma tecla vale também em standby, e só as conhecidas passam.
+amp = FakeAmp()
+amp.power = "standby"
+run(amp, target="key", name="power_toggle")
+assert amp.keys == ["power_toggle"]
+try:
+    run(amp, target="key", name="x")
+    raise AssertionError("tecla desconhecida")
+except ValueError as e:
+    assert str(e) == "Unknown key"
+
 amp = FakeAmp()
 amp.power = "standby"
 try:

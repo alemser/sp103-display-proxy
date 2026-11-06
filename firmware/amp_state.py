@@ -29,6 +29,7 @@ INPUT_IDS = {"PHONO": "phono", "TUNER": "tuner", "TAPE/AUX": "tape_aux",
              "CD": "cd", "DVD": "dvd", "DAB": "dab"}
 VOLUME_MIN = -78.75             # PT2314: 0 a -78,75 dB, passos de 1,25 dB
 STEP = 1.25
+SPEAKERS_AFTER_STANDBY = True   # medido em 2026-11-06: speakers sempre volta a ON ao sair do standby
 
 # Os campos do estado, na ordem em que aparecem no JSON.
 FIELDS = ("power", "volume_db", "input", "input_id", "input_name", "bass_db", "treble_db", "balance",
@@ -230,6 +231,8 @@ class AmpState:
             changed = True
         power = "standby" if screen == "standby" else "on" if screen != "unknown" else self.power
         if power != self.power:
+            if self.power == "standby" and power == "on" and self.speakers != SPEAKERS_AFTER_STANDBY:
+                self.speakers = SPEAKERS_AFTER_STANDBY
             self.power = power
             changed = True
         for key in values:

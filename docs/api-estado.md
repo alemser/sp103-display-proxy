@@ -38,7 +38,7 @@ o Pico reiniciar, o bass fica `null` até alguém mexer nele.
 | `input_name` | texto | O nome personalizado (app), ou o original |
 | `bass_db`, `treble_db` | −14 a 14, inteiros | |
 | `balance` | `{"side": "L"/"R"/null, "db": −78.75..0}` | `db` 0 = centro. `side` null abaixo de 5 dB: a barra do amp ainda não mostra o lado |
-| `loudness`, `speakers` | `true`, `false` | |
+| `loudness`, `speakers` | `true`, `false` | Ao sair do standby, o amp volta sempre com `speakers` ligado, e o Pico já mostra `true`. `loudness` continua como estava (medido em 2026-11-06) |
 | `screen` | `normal`, `volume`, `bass`, `treble`, `balance`, `loudness`, `speakers`, `boot`, `about`, `standby`, `unknown` | A tela que o amp está mostrando. `bass`/`treble`: o amp está no modo em que Volume ± muda o tom (até 6 s depois da última tecla) |
 | `firmware` | texto | Da tela "SW version" |
 | `lcd` | 2 textos de 16 | As linhas originais do controlador (a caixa das barras vira `■`) |
@@ -68,7 +68,7 @@ ser ligado: um cliente que precisa saber deve tratar `null` como "não sei", nun
 ## Ajustes diretos
 
 O cliente pede o resultado, e o Pico faz os cliques (`firmware/control.py`). A resposta é o estado depois da mudança, ou
-`400` com `{"error": "..."}`. Só um pedido por vez, e só com `power` = `on`.
+`400` com `{"error": "..."}`. Só um pedido por vez, e, com exceção de `target=key`, só com `power` = `on`.
 
 | Pedido | O que o Pico faz |
 |---|---|
@@ -77,6 +77,7 @@ O cliente pede o resultado, e o Pico faz os cliques (`firmware/control.py`). A r
 | `target=balance`, com `dir` | Clica no Function até Balance e manda volume. 1,25 dB por passo |
 | `target=loudness&on=1` ou `0` | Clica no Function até Loudness e manda volume + (ligar) ou − (desligar) |
 | `target=speakers&on=1` ou `0` | Igual, em Speakers |
+| `target=key&name=<comando>` | Manda uma tecla do controle, como `power_toggle` ou `select_cd`. Vale também em standby |
 
 Todos foram testados no amp em 2026-11-06. Em cerca de 1 clique a cada 8, o Function também troca a entrada para PHONO;
 o Pico percebe e devolve a entrada anterior em cerca de 1 s. Se ele ainda não souber a entrada, logo depois de reiniciar,

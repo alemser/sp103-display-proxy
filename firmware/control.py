@@ -2,6 +2,7 @@
 
     POST /control?target=volume&dir=up       volume, bass, treble ou balance; dir = up ou down
     POST /control?target=loudness&on=1       loudness ou speakers; on = 1 ou 0
+    POST /control?target=key&name=select_cd  uma tecla do controle (ir_codes.COMMANDS)
 
 O caminho no amp (docs/api-estado.md):
 - bass e treble têm tecla própria no IR; balance, loudness e speakers só pelo botão Function
@@ -14,6 +15,8 @@ Roda igual no MicroPython (Pico) e no Python do computador (tools/test_control.p
 """
 
 import asyncio
+
+import ir_codes
 
 MENUS = ("bass", "treble", "balance", "loudness", "speakers")
 STEPPED = ("volume", "bass", "treble", "balance")
@@ -103,10 +106,14 @@ class Control:
     async def run(self, query):
         """Faz o pedido. Levanta ValueError, com o texto para mostrar, se não der."""
         target = query.get("target")
-        if self.state.power != "on":
-            raise ValueError("The amp isn't on")
         if self.busy:
             raise ValueError("Still working on the last change")
+        if target == "key":             # vale também em standby: é assim que o amp liga
+            if query.get("name") not in ir_codes.COMMANDS:
+                raise ValueError("Unknown key")
+            return await self._ir(query["name"])
+        if self.state.power != "on":
+            raise ValueError("The amp isn't on")
         if target in STEPPED and query.get("dir") in KEYS:
             work = self.adjust(target, query["dir"])
         elif target in SWITCHES and query.get("on") in ("0", "1"):

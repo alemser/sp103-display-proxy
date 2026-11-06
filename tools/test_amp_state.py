@@ -57,7 +57,25 @@ def self_test():
         print(("ok   " if ok else "FALHA"), repr(l1), repr(l2), "->", got)
     print(f"\n{len(CASES) - bad} de {len(CASES)} ok")
     bad += not standby_test()
+    bad += not speakers_after_standby_test()
     return bad == 0
+
+
+def speakers_after_standby_test():
+    """Ao sair do standby, o amp volta com speakers ligado, sem mostrar a tela."""
+    blank = " " * 16
+    st = AmpState()
+    st.update("   Speakers     ", " < OFF >   ON   ", 1)
+    st.update("   Loudness     ", "   OFF   < ON > ", 2)
+    st.update(blank, blank, 3)
+    if st.speakers is not False or st.power != "standby":
+        print("FALHOU: speakers deve seguir OFF no standby", st.speakers, st.power)
+        return False
+    st.update("Volume -20.00 dB", "CD              ", 4)
+    if st.speakers is not True or st.loudness is not True:
+        print("FALHOU: depois do standby", st.speakers, st.loudness)
+        return False
+    return True
 
 
 def standby_test():
