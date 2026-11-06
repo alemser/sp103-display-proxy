@@ -35,6 +35,8 @@ Os 10 Ω vêm de 10,5 Ω medidos na escala 200, menos 0,6 Ω dos cabos do multí
 - O C902 (33 pF) fica entre o sinal e o GND.
 - Se o chip for um 8051, a perna 12 é P3.2/INT0, a entrada de interrupção. A família do chip ainda não foi confirmada.
 
+**Força da linha do IR (2026-11-06):** em Ω, escala 200k, amp fora da tomada, entre a perna da esquerda (sinal) e a da direita (alimentação): 39,0 kΩ com a ponta vermelha no sinal e 41,1 kΩ com as pontas invertidas. Quase igual nos dois sentidos, então é um resistor de cerca de 40 kΩ segurando a linha em 1. Puxar a linha para o GND custa cerca de 0,1 mA.
+
 **Em aberto:**
 
 - Confirmar se o resistor de cerca de 10 Ω é mesmo o R903.
@@ -62,7 +64,7 @@ Conferência em continuidade: E1 × 22 e E2 × 21 apitam; E1 × 21 e E2 × 22 n�
 
 **Em aberto:**
 
-- Qual dos dois é A e qual é B: isso depende do sentido de giro e sai da captura com o analisador.
+- Qual dos dois é A e qual é B: isso depende do sentido de giro.
 - Onde liga o C907: não apitou com E1, E2, E3 nem GND.
 - Por que E1 dá 6,9 kΩ com as pernas 1, 2 e 3, e 9,2 kΩ com as pernas 4–8, 13–17, 23–27. Voltar a isso ao medir os botões.
 
@@ -213,6 +215,11 @@ Pode ter havido erro de contagem das pernas nas medições anteriores à dos bot
 - [x] IR, sinal → perna 12: confirmado (apita na 12; não apita na 11 nem na 13)
 - [x] Encoder, E1 → perna 22 e E2 → perna 21: contagem confirmada
 - [x] Leituras em Ω de E1 com as pernas 1, 2 e 3 (6,9 kΩ): contagem confirmada
+
+## Em uso (2026-11-06)
+
+O Pico de dentro do amp usa dois destes pontos: o sinal do IR (GP15) e o E1 do encoder (GP14). Ver
+`../proxy-ligacao.md`. As capturas dos PT2314 saíram do plano, porque o volume já vem do display.
 
 ## Falta medir
 

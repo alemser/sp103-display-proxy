@@ -1,7 +1,7 @@
 # API do estado do amp (para o groove-rig e outros clientes)
 
 O Pico publica o que o display do SP103 mostra, já interpretado, em `http://sp103.local/` (ou o IP do Pico,
-192.168.178.108). Só leitura: o Pico nunca manda nada para o amp. Este é o contrato em que o groove-rig (o "state
+192.168.178.108). O estado é só leitura; os comandos ao amp ficam nas rotas `/ir`. Este é o contrato em que o groove-rig (o "state
 provider" do amplificador) pode confiar; mudanças nele precisam mudar também os clientes.
 
 ## Rotas
@@ -11,8 +11,10 @@ provider" do amplificador) pode confiar; mudanças nele precisam mudar também o
 | `GET /device` | Quem é a ponte e o que ela sabe fazer. O contrato está em `docs/contrato.md`, no repositório amp-link |
 | `GET /state` | O estado atual, em JSON |
 | `GET /events` | Server-Sent Events: um `data: {json}` com o estado atual logo ao conectar, e outro a cada mudança. Um comentário `: ping` a cada 1 s mantém a conexão viva: sem nada por uns 5 s, o cliente deve reconectar |
+| `GET /ir` | Comandos aceitos, envios feitos e leituras da linha do IR e do botão do volume |
+| `POST /ir/send?cmd=volume_up` | Manda um comando ao amp pela linha do IR |
 
-O JSON é o mesmo nas duas. Exemplo:
+O JSON de `/state` e `/events` é o mesmo. Exemplo:
 
 ```json
 {"power": "on", "volume_db": -20.0, "input": "DAB", "input_id": "dab", "input_name": "AirPlay/BT - DAC",
@@ -61,3 +63,34 @@ ser ligado: um cliente que precisa saber deve tratar `null` como "não sei", nun
 - O `sp103.local` funciona no iOS e no macOS. O groove-rig (Go sem cgo) **não** resolve nomes `.local`: use o IP,
   que é fixo pelo roteador (`http://192.168.178.108/events`).
 - No groove-rig, este é o "state provider" do perfil SP103: o contrato genérico está no `docs/state-provider.md` de lá.
+
+## Comandos
+
+`POST /ir/send?cmd=<comando>` manda o comando e responde como o `GET /ir`. Comando desconhecido ou outro envio em
+andamento: `400` com `{"error": "..."}`. Um envio dura cerca de 130 ms.
+
+| Comando | Efeito |
+|---|---|
+| `power_toggle` | Liga ou põe em standby. É o mesmo comando para os dois: confira o `power` antes |
+| `volume_up`, `volume_down` | O primeiro toque só abre a tela do volume; os seguintes mudam 1,25 dB cada |
+| `bass`, `treble` | Abrem o ajuste; por 6 s, `volume_up` e `volume_down` mudam esse valor |
+| `select_phono`, `select_tuner`, `select_tape_aux`, `select_cd`, `select_dvd`, `select_dab` | Trocam a entrada |
+
+Testados no amp: `power_toggle`, `volume_up` e `volume_down`. Os outros têm os bits conferidos com o perfil do
+groove-rig, e o comportamento de `bass` e `treble` vem de lá.
+
+`GET /ir`:
+
+```json
+{"commands": ["power_toggle", "volume_up"], "sending": false, "sent": 3, "line": 1, "knob": 1, "knob_edges": 6,
+ "wakes": 1}
+```
+
+| Campo | Significado |
+|---|---|
+| `commands` | Os comandos aceitos |
+| `sending` | Há um envio em andamento |
+| `sent` | Envios desde que o Pico ligou, incluindo os do botão do volume |
+| `line` | Nível da linha do IR. Em repouso, 1 |
+| `knob`, `knob_edges` | Nível do E1 do encoder e mudanças contadas desde que o Pico ligou |
+| `wakes` | Vezes em que girar o botão ligou o amp |

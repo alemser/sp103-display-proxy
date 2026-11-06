@@ -122,6 +122,7 @@ class QuietSource:
 def load_proxy():
     stubs = {"time": fake_time(), "sniffer": types.SimpleNamespace(Sniffer=FakeSniffer),
              "busy": types.SimpleNamespace(Responder=lambda: None),
+             "ir": types.SimpleNamespace(Remote=lambda: types.SimpleNamespace(handle=None)),
              "lcd1602": types.SimpleNamespace(Lcd1602=FakeLcd),
              "ota": types.SimpleNamespace(in_trial=lambda: False, handle=None),
              "web": types.SimpleNamespace(Publisher=None, wifi_task=None)}

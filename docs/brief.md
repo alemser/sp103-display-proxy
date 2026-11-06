@@ -79,6 +79,10 @@ Concluídas. Os detalhes estão em `docs/descobertas-protocolo.md`:
 
 ## Arquitetura decidida (2026-10-23)
 
+> Atualização de 2026-11-06: o Pico agora também manda comandos pela linha do IR, por dentro do amp
+> (`proxy-ligacao.md`). Ele segue sem substituir o controlador. As páginas web saíram: o Pico só tem API, e o cliente é
+> a app do repositório amp-link. O texto abaixo fica como registro da decisão original.
+
 O Pico **não** substitui o controlador e **não** emite IR. O controle do amp por IR já existe no projeto
 **groove-rig** (Broadlink, API na porta 7075, no Orange Pi "oceano").
 

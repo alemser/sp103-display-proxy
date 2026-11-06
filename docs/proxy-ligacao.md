@@ -44,6 +44,27 @@ o 1, também ao lado do USB).
   bastam para ele, sem conversor de nível (testado na bancada, `bancada-ligacao.md`).
 - Como os fios brancos, cinzas e roxos se repetem, cada um está marcado com o número do pino.
 
+### Dois fios para comandar o amp (2026-11-06)
+
+Soldados por baixo da placa, sem resistores. Programa: `firmware/ir.py`.
+
+| Ponto na placa | Sinal | Pico | Pino físico | Uso |
+|---|---|---|---|---|
+| Perna de sinal do receptor IR (perna 12 do chip) | IR | GP15 | 20 | O Pico puxa para 0 nos pulsos |
+| E1 do encoder do volume (perna 22 do chip) | Botão | GP14 | 19 | Só leitura |
+
+- **GP15:** nunca vai a 1. Só a direção muda, a 2 mA. A linha sobe por cerca de 40 kΩ dentro do receptor, então puxar
+  custa cerca de 0,1 mA.
+- **Programa antes do fio:** o RP2350 liga com pull-down, que pode carregar a linha. O `proxy.py` o desliga logo no
+  início. Ao reiniciar o Pico, o controle remoto pode falhar por alguns segundos.
+- **Comandos:** o Pico manda os mesmos bits do controle, depois do receptor, sem portadora. Os tempos são os medidos na
+  linha com o controle real. Com os do Broadlink, cerca de 5% mais longos, o controlador não reagiu.
+- **Acordar pelo botão:** com `power` = `standby`, duas mudanças do E1 em 1 s mandam `power_toggle`, no máximo uma vez a
+  cada 5 s. Com `power` = `null`, nada acontece: depois de o Pico reiniciar ou de o amp ir à tomada, o Pico só sabe do
+  standby depois de ver o amp ir para esse estado.
+
+Rotas e comandos: `api-estado.md`.
+
 ### Conferir o corte (multímetro em continuidade, amp fora da tomada)
 
 - Fio de baixo do furo N × pino N do display, para N = 4 a 14: **não apita**.
@@ -59,6 +80,8 @@ o 1, também ao lado do USB).
   os nomes e manda ao display só as linhas que mudaram, sem piscar. Os desenhos próprios (as barras) e o "display
   on/off" seguem os do controlador. A cada 30 s ele resincroniza o modo 4 bits e reescreve tudo, sem apagar a tela, para
   corrigir algum erro de ruído nos fios.
+- **Comanda o amp** (`ir.py`, `ir_codes.py`): o PIO puxa a linha do IR para 0 nos tempos que o DMA entrega. Entre um
+  tempo e outro, a linha fica solta. O mesmo arquivo acompanha o botão do volume.
 - **Publica** o estado (`amp_state.py`, `web.py`). O estado mostra sempre os nomes originais ("TUNER"), mais o nome
   personalizado em `input_name`.
 
@@ -101,15 +124,13 @@ do amp não atualiza.** Para voltar ao original, ligue cada fio de baixo ao fio 
   - `reads` e `writes`: leituras e escritas do controlador desde que o Pico ligou.
   - `busy_high`: leituras em que o controlador viu "ocupado" depois de o Pico já estar respondendo. **Tem que ficar em
     0.** Ao ligar, o controlador espera alguns milissegundos enquanto o Pico inicia; essas leituras não contam.
-- **`http://sp103.local/bus`** (ou `http://192.168.178.108/bus`): estatísticas do barramento e o registro das últimas
-  8192 palavras (umas 50 telas), com horário (o Pico acerta o relógio pela internet).
-  1. Toque em **Clear log**.
+- **Registro do barramento:** as últimas 8192 palavras (umas 50 telas), com horário (o Pico acerta o relógio pela
+  internet). `GET /bus.json` traz as estatísticas.
+  1. Zere o registro: `curl -X POST http://sp103.local/bus/clear`.
   2. Faça o que quer estudar no amp e anote a hora.
-  3. Toque em **Download log (CSV)**.
-  4. Veja as telas montadas: `python3 tools/ler_bus.py ~/Downloads/sp103-bus-<data>-<hora>.csv` (com `--palavras`,
-     cada palavra também).
-
-  Se o "Biggest batch" ficar vermelho (3000 palavras ou mais numa leitura só), algumas palavras podem ter se perdido.
+  3. Baixe o registro: `curl http://sp103.local/bus.csv -o bus.csv`.
+  4. Veja as telas montadas: `python3 tools/ler_bus.py bus.csv` (com `--palavras`, cada palavra também).
+- **`http://sp103.local/ir`**: a linha do IR deve ficar em 1 em repouso, e `knob_edges` deve subir ao girar o volume.
 - **Depois de o Pico reiniciar sozinho** (uma atualização, por exemplo), o display fica vazio até o controlador mandar a
   próxima tela (girar o volume ou trocar de entrada). Ao ligar o amp na tomada isso não acontece: os dois ligam juntos.
 
@@ -122,5 +143,5 @@ do amp não atualiza.** Para voltar ao original, ligue cada fio de baixo ao fio 
 
 ## Em aberto
 
-- **Saber quando o amp vai para standby.** Ao desligar, o controlador não escreve nada no display. Ao ligar, ele manda
-  "Clear display". Falta achar um sinal de standby (talvez a luz de fundo, pinos 15/16).
+- **Saber o estado logo depois de reiniciar.** O standby vem das telas (`api-estado.md`), então fica `null` até o amp
+  mudar de estado. Ler o LED da frente (pernas 26 e 27 do chip, um fio só de leitura no GP13) resolveria isso.

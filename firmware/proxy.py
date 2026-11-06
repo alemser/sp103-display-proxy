@@ -15,8 +15,9 @@ informação ligadas (info.py recebe, screens.py escolhe), o display mostra tamb
 está tocando, o fim do lado, a agulha e o relógio no standby.
 
 Publica o estado na rede (web.py; o cliente é a app do repositório amp-link), com /bus e
-atualização pelo Wi-Fi,
-como a escuta. Sem Wi-Fi, o display continua funcionando.
+atualização pelo Wi-Fi, como a escuta. Sem Wi-Fi, o display continua funcionando.
+
+Comanda o amp pela linha do IR e liga o amp quando alguém gira o volume em standby (ir.py).
 
 Rodar pelo computador:  .venv/bin/mpremote run firmware/proxy.py
 Ou sozinho, ao ligar o Pico: main.py importa escuta.py, que importa este arquivo.
@@ -28,6 +29,9 @@ from sniffer import Sniffer
 sniffer = Sniffer()
 import busy
 responder = busy.Responder()
+# Logo depois: tira o pull-down do GP15, que carregaria a linha do IR (ir.py).
+import ir
+remote = ir.Remote()
 
 import time
 import asyncio
@@ -58,6 +62,7 @@ D7 = 1 << 10                            # o D7 na palavra do sniffer (hd44780.py
 lcd = Lcd1602()                         # já limpa o display
 texts = names.load()                    # textos personalizados (names.py)
 state = AmpState(texts["inputs"])
+remote.standby = lambda: state.power == "standby"
 bus = Bus()
 # O Pico pode ligar depois do controlador ter gravado os desenhos (ao ligar o amp):
 # começa com os das capturas, e o modelo troca se o controlador gravar outros.
@@ -293,12 +298,14 @@ async def confirm_update():
 async def main():
     global pub
     pub = Publisher(state, get_names=lambda: texts, set_names=set_texts, names_extra=status,
-                    routes={"/update": ota.handle, "/bus": log.handle, "/device": device.handle})
+                    routes={"/update": ota.handle, "/bus": log.handle, "/device": device.handle,
+                            "/ir": remote.handle})
     log.clear(time.ticks_ms())
     asyncio.create_task(wifi_task(wifi_result))
     await asyncio.sleep(0.1)            # o Wi-Fi liga antes do servidor abrir o socket
     await pub.serve()                   # atende assim que houver rede
     asyncio.create_task(confirm_update())
+    asyncio.create_task(remote.watch_knob())
     await listen()                      # a escuta começa na hora, com ou sem Wi-Fi
 
 
