@@ -50,7 +50,8 @@ botão Function ◄───(GP0 lê, GP1 só puxa para 0)── Pico 2 W
 |---|---|
 | [`docs/proxy-ligacao.md`](docs/proxy-ligacao.md) | **A instalação atual**: ligação, alimentação, regras de segurança, diagnóstico |
 | [`docs/api-estado.md`](docs/api-estado.md) | O contrato do `/state`, do `/events` e das rotas `/control` e `/ir` (estado do amp e comandos) |
-| [`docs/vu.md`](docs/vu.md) | O VU meter: a ponte no Orange Pi, o protocolo, o que o display mostra, a configuração |
+| [`docs/vu.md`](docs/vu.md) | O VU meter: a ponte, o protocolo, o que o display mostra, a configuração |
+| [`docs/trocar-de-placa.md`](docs/trocar-de-placa.md) | **Instalar a ponte** numa placa: fazer ao mudar a captura de placa ou gravar uma imagem nova |
 | [`docs/atualizacao-wifi.md`](docs/atualizacao-wifi.md) | Atualizar o Pico pelo Wi-Fi, com volta automática |
 | [`docs/descobertas-protocolo.md`](docs/descobertas-protocolo.md) | Como o controlador fala com o display: comandos, telas e parte elétrica |
 | [`docs/bancada-ligacao.md`](docs/bancada-ligacao.md) | Display reserva na bancada (mesma ligação 4 bits do display do amp) |
@@ -61,7 +62,7 @@ botão Function ◄───(GP0 lê, GP1 só puxa para 0)── Pico 2 W
 ## Pastas
 
 - `firmware/`: o programa do Pico (MicroPython). O `main.py` e o `secrets.py` só vão pelo cabo.
-- `relay/`: a ponte do VU (`sp103-vu-relay`, Go), que roda no Orange Pi.
+- `relay/`: a ponte do VU (`sp103-vu-relay`, Go), que roda na placa com o groove-detector.
 - `tools/`: envio pelo Wi-Fi, testes no computador, leitura do registro e decodificador das capturas.
 - `captures/`: capturas `.lac` do analisador lógico, usadas pelos testes.
 - `docs/`: documentação e fotos da placa.

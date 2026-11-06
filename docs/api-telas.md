@@ -2,7 +2,7 @@
 
 O Pico do SP103 pode mostrar no display o que está tocando: artista e música, faixa e posição, tempo até o fim do
 lado, horas da agulha. Ele não sabe de onde vêm esses dados: só conhece este contrato. Quem fala este contrato é uma
-**fonte**. A fonte de hoje é o `sp103-vu-relay` no Pi 5, que lê o groove-identity e o groove-catalog
+**fonte**. A fonte de hoje é o `sp103-vu-relay`, que lê o groove-identity e o groove-catalog
 (`relay/nowplaying.go`); outra fonte (Volumio, Home Assistant) só precisa mandar os mesmos pacotes.
 
 Tudo vai por UDP, na porta **7091** da fonte, a mesma do VU (`docs/vu.md`).
@@ -64,7 +64,7 @@ um pacote novo difere mais de 2 s do que ele contou, para a contagem não pular 
 
 Sem pacote por 15 s, o Pico descarta os dados e volta à tela do amp.
 
-## Fonte de hoje: sp103-vu-relay no Pi 5
+## Fonte de hoje: sp103-vu-relay
 
 | Campo | De onde vem |
 |---|---|

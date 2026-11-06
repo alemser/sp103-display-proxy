@@ -92,13 +92,14 @@ amp_until = time.ticks_ms()             # até aqui, a tela do amp tem a vez
 
 def configure_feeds(cfg):
     """Aplica as configurações do VU e das telas. No modo fixo o VU nem pede quadros. Os
-    pacotes da fonte vêm sempre, mesmo com as telas desligadas: deles sai o nome do
-    streaming na tela do amp ("AirPlay" no lugar do nome da entrada DAB)."""
+    pacotes da fonte vêm sempre que há uma fonte, mesmo com as telas desligadas: deles sai
+    o nome do streaming na tela do amp ("AirPlay" no lugar do nome da entrada DAB)."""
     screens.configure(cfg["info"])
     vu_cfg = dict(cfg["vu"])
     vu_cfg["on"] = vu_cfg["on"] and screens.vu_allowed()
     vu.configure(vu_cfg)
-    info.configure(True, cfg["info"]["source"] or cfg["vu"]["relay"])
+    source = cfg["info"]["source"] or cfg["vu"]["relay"]
+    info.configure(bool(source), source)
 
 
 configure_feeds(texts)

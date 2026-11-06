@@ -7,7 +7,7 @@ Com o VU meter ligado na app (aba Display), as duas linhas do display viram as b
 
 ```
 groove-detector ──socket Unix──► sp103-vu-relay ──UDP, Wi-Fi──► Pico (vu.py, proxy.py)
- /tmp/groove-vu.sock              (no Orange Pi)                  pede a cada 2 s
+ /tmp/groove-vu.sock              (na placa)                      pede a cada 2 s
  /tmp/groove-gate.json
 ```
 
@@ -60,7 +60,7 @@ lugar das barras do amp; ao voltar para a tela do amp, o Pico grava de volta os 
 | Campo | Padrão | Faixa |
 |---|---|---|
 | VU meter | Disabled | Disabled (desligado), barras finas, deck de cassete, escala impressa ou Yamaha KX-393 |
-| VU source (IP) | 192.168.178.105 (oceano-0001) | um IP; o MicroPython não resolve nomes `.local` |
+| VU source (IP) | vazio | o IP da placa com a ponte, obrigatório com o VU ligado; o MicroPython não resolve nomes `.local` |
 
 A escala é sempre a automática (abaixo). Com "Disabled", o layout escolhido antes fica guardado para quando o VU voltar.
 
@@ -68,7 +68,7 @@ Fica no `names.json` do Pico, junto com os nomes (`"vu": {"on", "auto", "layout"
 `"floor"`/`"top"` de um arquivo antigo é ignorado). A linha embaixo dos campos diz o
 que o VU está fazendo: "VU on the display now", "waiting for music", "no data from the VU source"...
 
-**Escala automática (padrão desde 2026-10-29):** o nível do REC OUT muda muito com a fonte. Medido no Pi 5 com
+**Escala automática (padrão desde 2026-10-29):** o nível do REC OUT muda muito com a fonte. Medido com
 música: DAB com média perto de −30 dBFS; vinil (o Rega na entrada TUNER) com média −11 e picos −3, nos dois sockets do
 detector, então não é ruído grave. Com a escala automática, o topo fica 5 dB acima do quadro mais alto: sobe na hora e,
 com música, desce 1 dB/s (do vinil ao DAB leva uns 24 s). O piso fica 20 dB abaixo do topo, como num VU de ponteiro: a
@@ -79,35 +79,19 @@ entre a metade e 3/4, mexendo. Sem música o topo fica parado; ele vai de −40 
 **Escala manual (removida da página em 2026-11-02):** piso e topo fixos, escolhidos à mão. Saiu porque a automática
 acompanha a fonte sozinha; o `vu.py` ainda a aceita (`"auto": false`), mas só os testes a usam.
 
-**L e R iguais:** a placa de captura do oceano-0000 (GeneralPlus USB Audio Device) é mono: só a entrada de microfone,
-1 canal (`/proc/asound/card0/stream0`: `Channels: 1`, `MONO`). O detector repete o mesmo valor nos dois canais, e o R
-do REC OUT provavelmente nem é medido. Com uma captura estéreo de linha (plano: HiFiBerry DAC+ ADC), o VU mostra os
-dois canais sem mudar nada no Pico nem na ponte; só é preciso recalibrar o ganho no groove-detector.
+**L e R iguais:** a placa de captura USB (GeneralPlus USB Audio Device) é mono: só a entrada de microfone, 1 canal
+(`/proc/asound/card0/stream0`: `Channels: 1`, `MONO`). O detector repete o mesmo valor nos dois canais, e o R do REC
+OUT provavelmente nem é medido. Com uma captura estéreo de linha, o VU mostra os dois canais sem mudar nada no Pico
+nem na ponte; só é preciso recalibrar o ganho no groove-detector.
 
 Se o VU der um erro no Pico, ele se desliga sozinho e o display continua com a tela do amp; a app mostra o erro.
 Diagnóstico em `http://sp103.local/names`, campo `vu` (quadros recebidos, idade do último, música).
 
 ## Instalar a ponte
 
-Cada placa com o groove-detector pode ter a sua; o Pico escolhe pelo IP.
-
-```sh
-cd relay
-make test
-make deploy HOST=orange@192.168.178.105      # oceano-0001 (Orange Pi)
-make deploy HOST=alemser@192.168.178.99      # oceano-0000 (Pi 5)
-make status HOST=orange@192.168.178.105
-```
+Ver [`trocar-de-placa.md`](trocar-de-placa.md). Cada placa com o groove-detector pode ter a sua; o Pico escolhe pelo IP.
 
 O serviço `sp103-vu-relay` roda como `nobody`, no grupo `groove` (o socket do VU é `root:groove 0660`).
-
-**Firewall:** no oceano-0000 (Pi 5) o ufw bloqueia a entrada. Para usar essa placa:
-
-```sh
-ssh alemser@192.168.178.99 'sudo ufw allow from 192.168.178.0/24 to any port 7091 proto udp comment sp103-vu-relay'
-```
-
-O oceano-0001 não tem firewall.
 
 ## Atraso
 
@@ -124,4 +108,4 @@ altas.
 - `python3 tools/test_vu.py`: queda, pico, clip, desenho das linhas, pedido à ponte, "só com música" e a configuração.
 - `python3 tools/test_proxy.py`, parte 3: o VU alterna com a tela do amp (3 s depois de um redesenho) e some sem quadros.
 - `cd relay && make test`: pacote, pedidos (validade de 6 s, limite de 4), leitura do gate e o caminho completo.
-- Na rede (2026-10-29): a ponte do oceano-0001 enviou ~22 quadros/s ao Mac e ~33/s ao Pico.
+- Na rede (2026-10-29): a ponte enviou ~22 quadros/s ao Mac e ~33/s ao Pico.

@@ -381,7 +381,8 @@ def check_stream(path):
     for stream, want in (("bluetooth", "\x07 Bluetooth     "), ("airplay", "AirPlay         "),
                          ("", "Streaming       ")):
         proxy = load_proxy()
-        proxy.texts = names.validate({"inputs": {"DAB": "Streaming"}})
+        proxy.texts = names.validate({"inputs": {"DAB": "Streaming"}, "vu": {"relay": "192.168.178.99"}})
+        proxy.configure_feeds(proxy.texts)
         proxy.info_feed.socket = types.SimpleNamespace(socket=StreamSource, AF_INET=2, SOCK_DGRAM=2)
         StreamSource.stream = stream
         got = run_capture(proxy, words)

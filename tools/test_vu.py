@@ -74,14 +74,15 @@ def cfg(**kw):
 
 # --- names.py: a configuração do VU ---------------------------------------
 default = names.validate({})["vu"]
-check(default == {"on": False, "auto": True, "layout": "bars", "relay": "192.168.178.105"},
-      "padrão: VU desligado, escala automática, barras finas")
-old = names.validate({"vu": {"on": True, "auto": False, "floor": -45, "top": -20}})["vu"]
+check(default == {"on": False, "auto": True, "layout": "bars", "relay": ""},
+      "padrão: VU desligado, escala automática, barras finas, sem placa escolhida")
+old = names.validate({"vu": {"on": True, "auto": False, "floor": -45, "top": -20,
+                             "relay": "192.168.178.105"}})["vu"]
 check(old == {"on": True, "auto": True, "layout": "bars", "relay": "192.168.178.105"},
       "names.json antigo com a escala manual: aceito, e a escala fica automática")
-check(names.validate({"vu": {"on": True}})["inputs"] == {}, "só 'vu' não vira o formato antigo")
-for bad, what in (({"on": "yes"}, "on não booleano"), ({"relay": "oceano-0001.local"}, "nome em vez de IP"),
-                  ({"relay": "192.168.1.300"}, "IP inválido")):
+check(names.validate({"vu": {"on": False}})["inputs"] == {}, "só 'vu' não vira o formato antigo")
+for bad, what in (({"on": "yes"}, "on não booleano"), ({"relay": "placa.local"}, "nome em vez de IP"),
+                  ({"relay": "192.168.1.300"}, "IP inválido"), ({"on": True}, "VU ligado sem a fonte")):
     try:
         names.validate({"vu": bad})
         check(False, "recusa: " + what)

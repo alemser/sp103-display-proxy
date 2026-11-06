@@ -4,7 +4,7 @@
     GET /events   Server-Sent Events: um "data: {json}" a cada mudança
     GET /names    os textos personalizados (nomes das entradas e telas de inicialização)
     PUT /names    troca os textos: {"inputs": {"TUNER": "Rega Planar 2"}, "boot": [...], "about": [...],
-                  "vu": {"on": true, "layout": "bars", "relay": "192.168.178.105"},
+                  "vu": {"on": true, "layout": "bars", "relay": "192.168.1.50"},
                    "info": {"on": true, "mode": "temp", ...}}      (telas de informação)
                   (texto vazio = original; ver names.py)
     outras        rotas extras, por prefixo: routes={"/update": ota.handle, "/bus": log.handle, "/device": device.handle}

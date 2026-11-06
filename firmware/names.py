@@ -6,7 +6,7 @@ Ficam no arquivo names.json do Pico e são editados pela app (PUT /names):
      "boot":   ["Welcome", "Alessandro"],     # no lugar de "ACOUSTIC" / "SOLUTIONS"
      "about":  ["", ""],                      # no lugar de "Amplifier SP103" / "SW version 1.0"
      "vu":     {"on": False, "layout": "bars",                      # VU meter (vu.py), sempre com a
-                "relay": "192.168.178.105"}}                         # escala automática
+                "relay": "192.168.1.50"}}                            # escala automática
                                                                      # layout: bars, deck, scale, kx393
      "info":   {"on": False, "mode": "temp", "fixed": "track",          # telas de informação
                 "show": ["track", "pos", "side", "stylus", "quality"],  # (screens.py, info.py)
@@ -19,6 +19,7 @@ Texto vazio (ou ausente) = o texto original do amp. As linhas das telas de
 inicialização são centralizadas, como as originais.
 
 O "relay" é o IP da placa com o sp103-vu-relay: o MicroPython não resolve nomes .local.
+Vem vazio; com o VU ligado, é obrigatório.
 O "source" das telas é o IP de quem fala o contrato docs/api-telas.md; vazio = o mesmo do VU.
 """
 
@@ -29,7 +30,7 @@ from amp_state import INPUTS, STREAMING_INPUT
 FILE = "names.json"
 MAX_LEN = 16                    # uma linha do LCD
 SCREENS = ("boot", "about")
-VU_DEFAULT = {"on": False, "layout": "bars", "relay": "192.168.178.105"}
+VU_DEFAULT = {"on": False, "layout": "bars", "relay": ""}
 VU_LAYOUTS = ("bars", "deck", "scale", "kx393")   # os mesmos de vu.LAYOUTS
 INFO_DEFAULT = {"on": False, "mode": "temp", "fixed": "track", "show": ["track", "pos", "side", "stylus", "quality"],
                 "secs": 8, "alert": True, "clock": True, "scroll": True, "utc_offset": 0, "eu_dst": True,
@@ -101,8 +102,8 @@ def _vu(vu):
         raise ValueError("vu 'on' must be true or false")
     if out["layout"] not in VU_LAYOUTS:
         raise ValueError("the VU layout must be one of: " + ", ".join(VU_LAYOUTS))
-    if not _is_ip(out["relay"]):
-        raise ValueError("the VU source must be an IP address, like 192.168.178.105")
+    if not _is_ip(out["relay"]) and (out["on"] or out["relay"] != ""):
+        raise ValueError("the VU source must be an IP address, like 192.168.1.50")
     # A escala é sempre a automática (vu.py); a manual fica só para os testes.
     return {"on": out["on"], "auto": True, "layout": out["layout"], "relay": out["relay"]}
 
