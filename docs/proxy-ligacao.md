@@ -44,14 +44,16 @@ o 1, também ao lado do USB).
   bastam para ele, sem conversor de nível (testado na bancada, `bancada-ligacao.md`).
 - Como os fios brancos, cinzas e roxos se repetem, cada um está marcado com o número do pino.
 
-### Dois fios para comandar o amp (2026-11-06)
+### Quatro fios para comandar o amp (2026-11-06)
 
-Soldados por baixo da placa, sem resistores. Programa: `firmware/ir.py`.
+Soldados por baixo da placa, sem resistores. Programas: `firmware/ir.py`, `firmware/panel.py` e `firmware/control.py`.
 
 | Ponto na placa | Sinal | Pico | Pino físico | Uso |
 |---|---|---|---|---|
 | Perna de sinal do receptor IR (perna 12 do chip) | IR | GP15 | 20 | O Pico puxa para 0 nos pulsos |
 | E1 do encoder do volume (perna 22 do chip) | Botão | GP14 | 19 | Só leitura |
+| Perninha do botão Function (K7) ligada à perna 6 do chip | P6 | GP0 | 1 | Só leitura |
+| Perninha do botão Function (K7) ligada à perna 13 do chip | P13 | GP1 | 2 | O Pico puxa para 0 ao "apertar" |
 
 - **GP15:** nunca vai a 1. Só a direção muda, a 2 mA. A linha sobe por cerca de 40 kΩ dentro do receptor, então puxar
   custa cerca de 0,1 mA.
@@ -62,6 +64,12 @@ Soldados por baixo da placa, sem resistores. Programa: `firmware/ir.py`.
 - **Acordar pelo botão:** com `power` = `standby`, duas mudanças do E1 em 1 s mandam `power_toggle`, no máximo uma vez a
   cada 5 s. Com `power` = `null`, nada acontece: depois de o Pico reiniciar ou de o amp ir à tomada, o Pico só sabe do
   standby depois de ver o amp ir para esse estado.
+
+- **Botão Function:** o controlador pulsa a perna 6 e lê a perna 13. Apertado, o botão liga as duas. O PIO imita isso:
+  dentro de cada pulso longo do GP0, puxa o GP1 para 0. O GP1 nunca vai a 1. Em cerca de 1 clique a cada 8, o amp também
+  troca a entrada para PHONO, sem causa conhecida, e o `control.py` devolve a entrada anterior.
+- **Sintoma de solda encostando:** em 2026-11-06, depois de soldar P6 e P13, qualquer tecla do controle levava o amp a
+  PHONO, e o botão da frente funcionava. Sumiu depois de conferir as soldas. Se voltar, olhe esses pontos primeiro.
 
 Rotas e comandos: `api-estado.md`.
 
@@ -82,6 +90,8 @@ Rotas e comandos: `api-estado.md`.
   corrigir algum erro de ruído nos fios.
 - **Comanda o amp** (`ir.py`, `ir_codes.py`): o PIO puxa a linha do IR para 0 nos tempos que o DMA entrega. Entre um
   tempo e outro, a linha fica solta. O mesmo arquivo acompanha o botão do volume.
+- **Faz os ajustes diretos** (`control.py`, `panel.py`): recebe o pedido e anda pelos menus do amp com o IR e o botão
+  Function, conferindo cada passo no display.
 - **Publica** o estado (`amp_state.py`, `web.py`). O estado mostra sempre os nomes originais ("TUNER"), mais o nome
   personalizado em `input_name`.
 
@@ -91,6 +101,9 @@ GP2–GP12 recebem 5 V do amp, sem resistores em série. Eles **nunca** podem se
 com o controlador. O único que vira saída é o GP12 (D7), e só para 0: o valor de saída fica fixo em 0, só a direção
 muda, na força mínima (2 mA). O D7 é do P0 do controlador, que só sobe pelo resistor de 4,7 kΩ, então puxar para 0 é
 sempre seguro (~1 mA).
+
+Os quatro fios de comando seguem a mesma regra. GP0 e GP14 são só entradas. GP1 e GP15 só puxam para 0, a 2 mA, e nunca
+vão a 1.
 
 ## Alimentação pelo amp
 

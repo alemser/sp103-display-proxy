@@ -17,7 +17,8 @@ está tocando, o fim do lado, a agulha e o relógio no standby.
 Publica o estado na rede (web.py; o cliente é a app do repositório amp-link), com /bus e
 atualização pelo Wi-Fi, como a escuta. Sem Wi-Fi, o display continua funcionando.
 
-Comanda o amp pela linha do IR e liga o amp quando alguém gira o volume em standby (ir.py).
+Comanda o amp pela linha do IR, liga o amp quando alguém gira o volume em standby (ir.py) e
+aperta o botão Function por dentro (panel.py). Os ajustes diretos estão em control.py.
 
 Rodar pelo computador:  .venv/bin/mpremote run firmware/proxy.py
 Ou sozinho, ao ligar o Pico: main.py importa escuta.py, que importa este arquivo.
@@ -32,6 +33,8 @@ responder = busy.Responder()
 # Logo depois: tira o pull-down do GP15, que carregaria a linha do IR (ir.py).
 import ir
 remote = ir.Remote()
+import panel
+front_panel = panel.Panel()
 
 import time
 import asyncio
@@ -45,6 +48,7 @@ import sp103_screens as s
 import vu as vu_meter
 from amp_state import AmpState
 from buslog import BusLog
+from control import Control
 from hd44780 import Bus, RW
 from lcd1602 import Lcd1602
 from web import Publisher, wifi_task
@@ -63,6 +67,7 @@ lcd = Lcd1602()                         # já limpa o display
 texts = names.load()                    # textos personalizados (names.py)
 state = AmpState(texts["inputs"])
 remote.standby = lambda: state.power == "standby"
+control = Control(state, remote, front_panel)
 bus = Bus()
 # O Pico pode ligar depois do controlador ter gravado os desenhos (ao ligar o amp):
 # começa com os das capturas, e o modelo troca se o controlador gravar outros.
@@ -299,7 +304,7 @@ async def main():
     global pub
     pub = Publisher(state, get_names=lambda: texts, set_names=set_texts, names_extra=status,
                     routes={"/update": ota.handle, "/bus": log.handle, "/device": device.handle,
-                            "/ir": remote.handle})
+                            "/ir": remote.handle, "/control": control.handle})
     log.clear(time.ticks_ms())
     asyncio.create_task(wifi_task(wifi_result))
     await asyncio.sleep(0.1)            # o Wi-Fi liga antes do servidor abrir o socket

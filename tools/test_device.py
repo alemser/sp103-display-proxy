@@ -18,9 +18,9 @@ d = json.loads(json.dumps(device.describe("abcd1234")))
 assert d["api"] == 1
 assert d["bridge_version"] == "abcd1234"
 assert d["volume_db"] == {"min": -78.75, "max": 0, "step": 1.25}
-assert d["tone_db"] == {"min": -14, "max": 14, "step": 1}
+assert d["tone_db"] == {"min": -14, "max": 14, "step": 2}
 assert [i["name"] for i in d["inputs"]] == list(INPUTS)
 assert [i["id"] for i in d["inputs"]] == ["phono", "tuner", "tape_aux", "cd", "dvd", "dab"]
 assert d["display"] == {"columns": 16, "rows": 2}
-assert "config" in d["features"]
+assert "config" in d["features"] and "control" in d["features"]
 print("tudo certo")

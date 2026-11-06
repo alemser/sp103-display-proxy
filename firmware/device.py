@@ -10,15 +10,17 @@ from amp_state import INPUTS, INPUT_IDS, STEP, VOLUME_MIN
 
 API = 1                         # só muda quando algo deixa de ser compatível
 MODEL = "Acoustic Solutions SP103"
-TONE_DB = 14                    # bass e treble: de -14 a 14, de 1 em 1
+TONE_DB = 14                    # bass e treble: de -14 a 14
+TONE_STEP = 2                   # cada toque no amp muda 2 dB
 COLUMNS, ROWS = 16, 2
-FEATURES = ("tone", "balance", "loudness", "speakers", "config", "vu", "info_screens", "bus_log", "update")
+FEATURES = ("tone", "balance", "loudness", "speakers", "config", "vu", "info_screens", "bus_log", "update",
+            "control")
 
 
 def describe(version):
     return {"api": API, "model": MODEL, "bridge_version": version,
             "volume_db": {"min": VOLUME_MIN, "max": 0, "step": STEP},
-            "tone_db": {"min": -TONE_DB, "max": TONE_DB, "step": 1},
+            "tone_db": {"min": -TONE_DB, "max": TONE_DB, "step": TONE_STEP},
             "inputs": [{"id": INPUT_IDS[name], "name": name} for name in INPUTS],
             "display": {"columns": COLUMNS, "rows": ROWS},
             "features": list(FEATURES)}

@@ -218,8 +218,12 @@ Pode ter havido erro de contagem das pernas nas medições anteriores à dos bot
 
 ## Em uso (2026-11-06)
 
-O Pico de dentro do amp usa dois destes pontos: o sinal do IR (GP15) e o E1 do encoder (GP14). Ver
-`../proxy-ligacao.md`. As capturas dos PT2314 saíram do plano, porque o volume já vem do display.
+O Pico de dentro do amp usa estes pontos: o sinal do IR (GP15), o E1 do encoder (GP14) e as pernas 6 e 13 do botão
+Function, que é o K7 (GP0 e GP1). Ver `../proxy-ligacao.md`. As capturas dos PT2314 saíram do plano, porque o volume já
+vem do display.
+
+**Function (2026-11-06):** com o botão solto, a perna 6 pulsa e a perna 13 fica em 1. Com ele apertado, a perna 13 cai
+junto com a 6 em todos os pulsos. Os pulsos da perna 6 vêm em grupos de 3, com cerca de 30 µs cada, a cada 320 µs.
 
 ## Falta medir
 

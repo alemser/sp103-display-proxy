@@ -1,8 +1,8 @@
-# API do estado do amp (para o groove-rig e outros clientes)
+# API do estado e dos comandos do amp (para o groove-rig e outros clientes)
 
 O Pico publica o que o display do SP103 mostra, já interpretado, em `http://sp103.local/` (ou o IP do Pico,
-192.168.178.108). O estado é só leitura; os comandos ao amp ficam nas rotas `/ir`. Este é o contrato em que o groove-rig (o "state
-provider" do amplificador) pode confiar; mudanças nele precisam mudar também os clientes.
+192.168.178.108). O estado é só leitura; os comandos ao amp ficam nas rotas `/control` e `/ir`. Este é o contrato em que
+o groove-rig (o "state provider" do amplificador) pode confiar; mudanças nele precisam mudar também os clientes.
 
 ## Rotas
 
@@ -13,6 +13,7 @@ provider" do amplificador) pode confiar; mudanças nele precisam mudar também o
 | `GET /events` | Server-Sent Events: um `data: {json}` com o estado atual logo ao conectar, e outro a cada mudança. Um comentário `: ping` a cada 1 s mantém a conexão viva: sem nada por uns 5 s, o cliente deve reconectar |
 | `GET /ir` | Comandos aceitos, envios feitos e leituras da linha do IR e do botão do volume |
 | `POST /ir/send?cmd=volume_up` | Manda um comando ao amp pela linha do IR |
+| `POST /control?target=bass&dir=up` | Ajusta o amp direto, sem o cliente lidar com menus (ver "Ajustes diretos") |
 
 O JSON de `/state` e `/events` é o mesmo. Exemplo:
 
@@ -64,6 +65,23 @@ ser ligado: um cliente que precisa saber deve tratar `null` como "não sei", nun
   que é fixo pelo roteador (`http://192.168.178.108/events`).
 - No groove-rig, este é o "state provider" do perfil SP103: o contrato genérico está no `docs/state-provider.md` de lá.
 
+## Ajustes diretos
+
+O cliente pede o resultado, e o Pico faz os cliques (`firmware/control.py`). A resposta é o estado depois da mudança, ou
+`400` com `{"error": "..."}`. Só um pedido por vez, e só com `power` = `on`.
+
+| Pedido | O que o Pico faz |
+|---|---|
+| `target=volume&dir=up` ou `down` | Espera um menu aberto fechar e manda volume. O primeiro toque só abre a tela do volume, então ele confere o valor e repete |
+| `target=bass` ou `treble`, com `dir` | Manda a tecla própria e depois volume. 2 dB por passo |
+| `target=balance`, com `dir` | Clica no Function até Balance e manda volume. 1,25 dB por passo |
+| `target=loudness&on=1` ou `0` | Clica no Function até Loudness e manda volume + (ligar) ou − (desligar) |
+| `target=speakers&on=1` ou `0` | Igual, em Speakers |
+
+Todos foram testados no amp em 2026-11-06. Em cerca de 1 clique a cada 8, o Function também troca a entrada para PHONO;
+o Pico percebe e devolve a entrada anterior em cerca de 1 s. Se ele ainda não souber a entrada, logo depois de reiniciar,
+não tem como devolver.
+
 ## Comandos
 
 `POST /ir/send?cmd=<comando>` manda o comando e responde como o `GET /ir`. Comando desconhecido ou outro envio em
@@ -76,8 +94,8 @@ andamento: `400` com `{"error": "..."}`. Um envio dura cerca de 130 ms.
 | `bass`, `treble` | Abrem o ajuste; por 6 s, `volume_up` e `volume_down` mudam esse valor |
 | `select_phono`, `select_tuner`, `select_tape_aux`, `select_cd`, `select_dvd`, `select_dab` | Trocam a entrada |
 
-Testados no amp: `power_toggle`, `volume_up` e `volume_down`. Os outros têm os bits conferidos com o perfil do
-groove-rig, e o comportamento de `bass` e `treble` vem de lá.
+Testados no amp: `power_toggle`, volume, `bass`, `treble`, `select_cd` e `select_dvd`. As outras entradas têm os bits
+conferidos com o perfil do groove-rig.
 
 `GET /ir`:
 
